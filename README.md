@@ -6,23 +6,23 @@ Text an SMS to submit maintenance requests or have pest control scheduled automa
 
 ## How It Works
 
-1. **Browser automation** (Playwright) logs into your RentCafe portal and submits maintenance request forms
-2. **SMS interface** (Twilio) lets you text requests like "leaky faucet in bathroom" and the agent handles the rest
-3. **Weekly scheduler** automatically submits pest control requests on your chosen day/time
-4. **Session persistence** — cookies are saved so you stay logged in between runs
+1. **Browserbase** cloud browser handles Cloudflare challenges and persists cookies across sessions
+2. **Playwright** automates the RentCafe portal (login, form submission)
+3. **Twilio SMS** lets you text requests like "leaky faucet in bathroom"
+4. **Cron scheduler** auto-submits pest control requests weekly
 
 ## Setup
 
 ### Prerequisites
 
 - Node.js 18+
-- A Twilio account (for SMS — optional for CLI-only use)
+- [Browserbase](https://browserbase.com) account (API key + project ID)
+- Twilio account (for SMS — optional for CLI-only use)
 
 ### Install
 
 ```bash
 npm install
-npx playwright install chromium
 ```
 
 ### Configure
@@ -34,7 +34,8 @@ cp .env.example .env
 
 Required:
 - `RENTCAFE_EMAIL` — your RentCafe login email
-- `RENTCAFE_URL` — your property's RentCafe login page URL
+- `BROWSERBASE_API_KEY` — from [Browserbase dashboard](https://browserbase.com)
+- `BROWSERBASE_PROJECT_ID` — your Browserbase project ID
 
 For SMS:
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
@@ -42,18 +43,15 @@ For SMS:
 
 ### First-Time Login
 
-Run the interactive login to authenticate and save cookies:
-
 ```bash
 npm run login
 ```
 
-This opens a browser window where you:
-1. Solve the Cloudflare captcha (if any)
-2. Enter your email
-3. Enter the verification code from your email
-
-Cookies are saved for future use.
+This creates a Browserbase session that:
+1. Automatically solves Cloudflare captchas
+2. Navigates to RentCafe and fills your email
+3. Prompts you for the OTP code from your email
+4. Saves cookies via Browserbase persistent context
 
 ### Run the Agent
 
@@ -61,13 +59,11 @@ Cookies are saved for future use.
 npm run dev
 ```
 
-This starts:
-- An Express server listening for Twilio SMS webhooks
-- A cron scheduler for weekly pest control requests
+Starts:
+- Express server for Twilio SMS webhooks
+- Cron scheduler for weekly pest control
 
-### One-Shot Submission
-
-Submit a request from the command line without starting the server:
+### CLI Submission
 
 ```bash
 npm run submit -- "leaky faucet in kitchen"
@@ -83,23 +79,25 @@ npm run submit -- "pest control"
 | `login` | Triggers re-authentication |
 | `status` | Checks if agent is logged in |
 | `help` | Shows available commands |
-| `123456` (digits) | Supplies an OTP code during login |
+| `123456` (digits) | Supplies OTP code during login |
 
 ## Architecture
 
 ```
 User (SMS) → Twilio → Express Server → Handler
                                           ↓
-                                    Playwright Browser → RentCafe Portal
+                                    Playwright → Browserbase (cloud) → RentCafe
                                           ↑
                                     Cron Scheduler (weekly pest control)
 ```
 
-### Session Management
+### Why Browserbase?
 
-- Cookies are persisted to `browser-data/cookies.json`
-- If the session expires, the agent texts you for a new verification code
-- A keepalive can be added to prevent session timeout
+RentCafe uses Cloudflare Turnstile which blocks automated browsers. Browserbase provides:
+- **Captcha solving** — automatically handles Cloudflare challenges
+- **Persistent contexts** — cookies survive across sessions (no re-login needed)
+- **Stealth browsing** — residential fingerprints that bypass bot detection
+- **Session replay** — debug automation via recorded browser sessions
 
 ## Configuration
 
@@ -107,10 +105,12 @@ User (SMS) → Twilio → Express Server → Handler
 |---|---|---|
 | `RENTCAFE_URL` | Login page URL | Atlantic Palazzo Living |
 | `RENTCAFE_EMAIL` | Your login email | — |
+| `BROWSERBASE_API_KEY` | Browserbase API key | — |
+| `BROWSERBASE_PROJECT_ID` | Browserbase project ID | — |
+| `BROWSERBASE_CONTEXT_ID` | Context ID for cookie persistence | `rentcafe-session` |
 | `TWILIO_ACCOUNT_SID` | Twilio account SID | — |
 | `TWILIO_AUTH_TOKEN` | Twilio auth token | — |
 | `TWILIO_PHONE_NUMBER` | Twilio phone number | — |
 | `USER_PHONE_NUMBER` | Your phone number | — |
-| `PORT` | Webhook server port | 3000 |
-| `HEADLESS` | Run browser headless | false |
+| `PORT` | Webhook server port | `3000` |
 | `PEST_CONTROL_CRON` | Cron schedule for pest control | `0 9 * * 1` (Mon 9am) |

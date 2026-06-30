@@ -3,15 +3,12 @@
  *
  * Usage:  npm run login
  *
- * Opens a visible browser window so you can:
- *   1. Solve the Cloudflare challenge manually
- *   2. Enter your email (auto-filled if RENTCAFE_EMAIL is set)
- *   3. Enter the OTP code from your email
- *
- * Once logged in, cookies are saved to browser-data/cookies.json for future use.
+ * Creates a Browserbase session (with captcha solving + persistent context),
+ * navigates to RentCafe, and walks you through the OTP login flow.
+ * Cookies are automatically persisted via Browserbase contexts.
  */
 
-import { launchBrowser, getPage, saveCookies, isLoggedIn, closeBrowser } from "./browser.js";
+import { launchBrowser, getPage, closeBrowser, isLoggedIn } from "./browser.js";
 import { config } from "./config.js";
 import readline from "node:readline";
 
@@ -26,20 +23,25 @@ async function prompt(question: string): Promise<string> {
 }
 
 async function interactiveLogin(): Promise<void> {
-  console.log("=== RentCafe Interactive Login ===\n");
-  console.log("This will open a browser window. You may need to:");
-  console.log("  1. Solve a Cloudflare captcha");
-  console.log("  2. Enter your verification code\n");
+  console.log("=== RentCafe Interactive Login (via Browserbase) ===\n");
+  console.log("Browserbase will handle Cloudflare challenges automatically.");
+  console.log("Cookies are persisted across sessions via Browserbase contexts.\n");
 
   await launchBrowser();
   const page = await getPage();
 
   console.log(`Navigating to: ${config.rentcafe.url}`);
-  await page.goto(config.rentcafe.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+  await page.goto(config.rentcafe.url, { waitUntil: "networkidle", timeout: 60_000 });
 
-  // Wait for user to handle Cloudflare
-  console.log("\nIf there's a Cloudflare challenge, please solve it in the browser window.");
-  await prompt("Press Enter once you're past the Cloudflare check...");
+  // Wait a moment for any Cloudflare challenge to be solved
+  await page.waitForTimeout(5000);
+
+  // Check if already logged in from a previous session
+  if (await isLoggedIn(page)) {
+    console.log("\nAlready logged in from a previous session!");
+    await closeBrowser();
+    process.exit(0);
+  }
 
   // Auto-fill email if configured
   if (config.rentcafe.email) {
@@ -49,37 +51,58 @@ async function interactiveLogin(): Promise<void> {
     );
     if (emailInput) {
       await emailInput.fill(config.rentcafe.email);
-      console.log("Email filled. Click 'Sign In' or 'Send Code' in the browser.");
     }
   }
 
-  await prompt("Press Enter once you've submitted your email...");
+  // Click submit to trigger OTP
+  const submitBtn = await page.$(
+    'button[type="submit"], input[type="submit"], button:has-text("Sign In"), button:has-text("Log In"), button:has-text("Continue"), button:has-text("Send Code")'
+  );
+  if (submitBtn) {
+    await submitBtn.click();
+    console.log("Email submitted, OTP should be sent to your email.");
+  } else {
+    await prompt("Click 'Sign In' or 'Send Code' in the browser, then press Enter here...");
+  }
 
-  // Wait for OTP
-  const otp = await prompt("Enter the verification code from your email: ");
+  await page.waitForTimeout(3000);
+
+  // Wait for OTP from user
+  const otp = await prompt("\nEnter the verification code from your email: ");
   if (otp) {
     const otpInput = await page.$(
-      'input[name*="code" i], input[name*="otp" i], input[name*="verification" i], input[type="tel"], input[type="number"], input:visible'
+      'input[name*="code" i], input[name*="otp" i], input[name*="verification" i], input[type="tel"], input[type="number"]'
     );
     if (otpInput) {
       await otpInput.fill(otp);
-      console.log("Code entered. Click 'Verify' or 'Submit' in the browser.");
+    } else {
+      // Try first visible input on the page
+      const visibleInputs = await page.$$("input:visible");
+      if (visibleInputs.length > 0) {
+        await visibleInputs[0].fill(otp);
+      }
+    }
+
+    // Submit OTP
+    const otpSubmit = await page.$(
+      'button[type="submit"], input[type="submit"], button:has-text("Verify"), button:has-text("Submit"), button:has-text("Continue")'
+    );
+    if (otpSubmit) {
+      await otpSubmit.click();
+    } else {
+      await page.keyboard.press("Enter");
     }
   }
 
-  await prompt("Press Enter once you're fully logged in...");
+  await page.waitForTimeout(5000);
 
-  // Verify login
   if (await isLoggedIn(page)) {
-    console.log("\nLogin successful! Saving cookies...");
+    console.log("\nLogin successful! Cookies saved via Browserbase context.");
   } else {
-    console.log("\nCouldn't confirm login status, but saving cookies anyway...");
+    console.log("\nCouldn't confirm login, but cookies are saved via Browserbase context.");
   }
 
-  await saveCookies();
-  console.log("Cookies saved to browser-data/cookies.json");
-  console.log("\nYou can now start the agent with: npm run dev");
-
+  console.log("You can now start the agent with: npm run dev\n");
   await closeBrowser();
   process.exit(0);
 }
