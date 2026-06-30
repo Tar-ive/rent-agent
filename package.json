@@ -1,0 +1,31 @@
+{
+  "name": "rent-agent",
+  "version": "1.0.0",
+  "description": "Automated maintenance & pest control request agent for RentCafe portals",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "login": "tsx src/login.ts",
+    "submit": "tsx src/submit.ts",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "node-cron": "^3.0.3",
+    "playwright": "^1.48.0",
+    "twilio": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.7.0",
+    "@types/node-cron": "^3.0.11",
+    "eslint": "^9.11.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
