@@ -4,7 +4,13 @@ import { parseMaintenanceRequest, submitMaintenanceRequest } from "./maintenance
 import { sendNotification } from "./notify.js";
 import { hasWorkflow, runWorkflow, listWorkflows } from "./workflow/runner.js";
 
-export async function handleIncomingSms(message: string, _from: string): Promise<string> {
+export interface RequestContext {
+  category?: string;
+  location?: string;
+  photos?: string[];
+}
+
+export async function handleIncomingSms(message: string, _from: string, context?: RequestContext): Promise<string> {
   const lower = message.toLowerCase().trim();
 
   // Help command
@@ -51,6 +57,26 @@ export async function handleIncomingSms(message: string, _from: string): Promise
     return success ? "Login successful!" : "Login failed. Please try again.";
   }
 
+  // If interactive context is provided, use it directly
+  if (context?.category) {
+    const request = {
+      category: context.category,
+      description: message,
+      location: context.location,
+      permissionToEnter: true,
+      photos: context.photos,
+    };
+
+    if (hasWorkflow("maintenance-request")) {
+      return await executeWorkflow("maintenance-request", {
+        category: request.category,
+        description: request.description,
+        location: request.location ?? "",
+      }, request.photos);
+    }
+    return await submitRequest(request);
+  }
+
   // Pest control shortcut — use workflow if available
   if (lower.includes("pest") || lower.includes("bug spray") || lower.includes("exterminator")) {
     if (hasWorkflow("pest-control")) {
@@ -82,7 +108,8 @@ export async function handleIncomingSms(message: string, _from: string): Promise
 
 async function executeWorkflow(
   workflowName: string,
-  variables: Record<string, string>
+  variables: Record<string, string>,
+  photos?: string[]
 ): Promise<string> {
   try {
     const page = await getPage();
@@ -99,6 +126,10 @@ async function executeWorkflow(
     const result = await runWorkflow(page, workflowName, variables);
 
     if (result.success) {
+      // Upload photos if any were provided
+      if (photos && photos.length > 0) {
+        await uploadPhotos(page, photos);
+      }
       return `Request submitted via workflow "${workflowName}" (${result.stepsCompleted} steps completed)`;
     }
 
@@ -110,11 +141,29 @@ async function executeWorkflow(
   }
 }
 
+async function uploadPhotos(page: import("playwright").Page, photos: string[]): Promise<void> {
+  try {
+    const fileInput = await page.$(
+      'input[type="file"], input[accept*="image"], input[name*="photo" i], input[name*="file" i], input[name*="attachment" i]'
+    );
+    if (fileInput) {
+      await fileInput.setInputFiles(photos);
+      console.log(`[handler] Uploaded ${photos.length} photo(s)`);
+      await page.waitForTimeout(2000);
+    } else {
+      console.warn("[handler] No file input found on page, photos not uploaded");
+    }
+  } catch (err) {
+    console.warn("[handler] Failed to upload photos:", err);
+  }
+}
+
 async function submitRequest(request: {
   category: string;
   description: string;
   location?: string;
   permissionToEnter?: boolean;
+  photos?: string[];
 }): Promise<string> {
   try {
     const page = await getPage();
@@ -131,6 +180,10 @@ async function submitRequest(request: {
     const result = await submitMaintenanceRequest(page, request);
 
     if (result.success) {
+      // Upload photos if provided
+      if (request.photos && request.photos.length > 0) {
+        await uploadPhotos(page, request.photos);
+      }
       const confMsg = result.confirmationId
         ? ` (Confirmation: ${result.confirmationId})`
         : "";
