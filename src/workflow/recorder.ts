@@ -226,20 +226,40 @@ export async function recordWorkflow(): Promise<void> {
     }
   });
 
-  // Navigate to RentCafe login page (use full URL to avoid 404)
-  const targetUrl = config.rentcafe.url;
-  console.log(`Navigating to: ${targetUrl}`);
-  await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
-  startUrl = page.url();
+  // Auto-login before recording so user doesn't have to deal with CAPTCHA
+  console.log("Logging into RentCafe automatically...");
+  const { login } = await import("../auth.js");
+  const { isLoggedIn } = await import("../browser.js");
 
-  // Wait for Cloudflare
+  await page.goto(config.rentcafe.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+
+  // Wait for Cloudflare to resolve
   console.log("Waiting for Cloudflare to resolve...");
   await page.waitForTimeout(10_000);
 
-  // Re-inject script after Cloudflare redirect
+  // Check if already logged in (persistent cookies)
+  if (await isLoggedIn(page)) {
+    console.log("Already logged in via saved cookies!");
+  } else {
+    // Run full login flow (email + Gmail API OTP auto-read)
+    console.log("Not logged in — running auto-login (Gmail API will read OTP)...");
+    const loginOk = await login(page);
+    if (!loginOk) {
+      console.error("Login failed. Make sure Gmail API is configured for auto-OTP.");
+      console.error("Check your .env: GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN");
+      return;
+    }
+    console.log("Login successful!");
+  }
+
+  // Now logged in — set start URL to wherever we are post-login
+  startUrl = page.url();
+
+  // Re-inject recording script after login navigation
   await page.evaluate(RECORDING_SCRIPT);
 
-  console.log("\n✅ Ready! Perform your workflow in the live view above.");
+  console.log("\n✅ Logged in! You can now record your workflow.");
+  console.log("   Open the live view URL above and navigate to the form you want to record.");
   console.log("   The recorder captures clicks, form fills, and dropdown selections.");
   console.log("   Press Enter here when you're done recording.\n");
 
