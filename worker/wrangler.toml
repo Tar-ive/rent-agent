@@ -1,0 +1,6 @@
+name = "rent-agent-telegram"
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+
+[vars]
+TELEGRAM_CHAT_ID = "7480420973"
