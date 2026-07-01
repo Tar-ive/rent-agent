@@ -60,12 +60,10 @@ function telegramApi(method: string, body?: object): Promise<any> {
   });
 }
 
-async function sendMessage(text: string): Promise<void> {
-  await telegramApi("sendMessage", {
-    chat_id: CHAT_ID,
-    text,
-    parse_mode: "Markdown",
-  });
+async function sendMessage(text: string, markdown = false): Promise<void> {
+  const body: Record<string, string> = { chat_id: CHAT_ID, text };
+  if (markdown) body.parse_mode = "Markdown";
+  await telegramApi("sendMessage", body);
 }
 
 function getLastUpdateId(): number {
@@ -124,7 +122,8 @@ async function handleMessage(msg: TelegramMessage["message"]): Promise<void> {
           "Examples:\n" +
           "• _leaky faucet in kitchen_\n" +
           "• _AC not cooling properly_\n" +
-          "• _pest control_"
+          "• _pest control_",
+        true
       );
       break;
 

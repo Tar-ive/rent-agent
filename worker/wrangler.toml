@@ -1,6 +1,16 @@
 name = "rent-agent-telegram"
 main = "src/index.ts"
 compatibility_date = "2024-09-01"
+compatibility_flags = ["nodejs_compat"]
 
-[vars]
-TELEGRAM_CHAT_ID = "7480420973"
+# No static assets — this is a pure API worker
+# assets = { directory = "./public" }
+
+[build]
+command = "npm install"
+
+# All sensitive values stored as secrets via Cloudflare dashboard or CLI:
+#   npx wrangler secret put TELEGRAM_BOT_TOKEN
+#   npx wrangler secret put TELEGRAM_CHAT_ID
+#   npx wrangler secret put GITHUB_TOKEN
+#   npx wrangler secret put GITHUB_REPO

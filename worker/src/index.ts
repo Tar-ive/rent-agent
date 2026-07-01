@@ -23,11 +23,13 @@ interface TelegramUpdate {
   };
 }
 
-async function sendTelegramMessage(token: string, chatId: string, text: string): Promise<void> {
+async function sendTelegramMessage(token: string, chatId: string, text: string, markdown = false): Promise<void> {
+  const payload: Record<string, string> = { chat_id: chatId, text };
+  if (markdown) payload.parse_mode = "Markdown";
   await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -99,7 +101,8 @@ export default {
             "Examples:\n" +
             "• _leaky faucet in kitchen_\n" +
             "• _AC not cooling properly_\n" +
-            "• _three sockets not working_"
+            "• _three sockets not working_",
+          true
         );
         break;
 

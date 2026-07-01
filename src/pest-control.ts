@@ -176,7 +176,7 @@ export async function submitPestControl(): Promise<{
       return { success: false, error: `Validation: ${errors.join("; ")}` };
     }
 
-    return { success: true };
+    return { success: false, error: "Submission result unclear — form may not have submitted" };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[pest-control] Error:", msg);
