@@ -81,12 +81,12 @@ export async function handleIncomingSms(message: string, _from: string, context?
   if (lower.includes("pest") || lower.includes("bug spray") || lower.includes("exterminator")) {
     if (hasWorkflow("pest-control")) {
       return await executeWorkflow("pest-control", {
-        description: "Requesting scheduled pest control treatment for the unit.",
+        description: "Requesting scheduled pest control treatment for the apartment. Please treat all rooms including kitchen, bathrooms, and common areas.",
       });
     }
     return await submitRequest({
       category: "pest control",
-      description: "Requesting scheduled pest control treatment for the unit.",
+      description: "Requesting scheduled pest control treatment for the apartment. Please treat all rooms including kitchen, bathrooms, and common areas.",
       permissionToEnter: true,
     });
   }

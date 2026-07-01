@@ -9,10 +9,12 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "login": "tsx src/login.ts",
+    "pest-control": "tsx src/pest-control.ts",
     "submit": "tsx src/submit.ts",
     "gmail-setup": "tsx src/gmail-setup.ts",
     "record": "tsx src/workflow/recorder.ts",
     "replay": "tsx src/workflow/replay-cli.ts",
+    "bot": "tsx src/telegram-bot.ts",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit"
   },
@@ -25,6 +27,9 @@
     "grammy": "^1.44.0",
     "node-cron": "^3.0.3",
     "playwright": "^1.48.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "twilio": "^5.3.0"
   },
   "devDependencies": {
