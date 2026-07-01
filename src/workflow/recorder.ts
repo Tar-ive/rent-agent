@@ -104,9 +104,10 @@ const RECORDING_SCRIPT = `
     return el.value || '';
   }
 
-  // Capture clicks
+  // Capture clicks (skip SELECT elements — handled by change listener)
   document.addEventListener('click', function(e) {
-    const el = e.target.closest('button, a, input[type="submit"], input[type="button"], [role="button"], label, select, [onclick]') || e.target;
+    const el = e.target.closest('button, a, input[type="submit"], input[type="button"], [role="button"], label, [onclick]') || e.target;
+    if (el.tagName === 'SELECT' || el.tagName === 'OPTION') return;
     const step = {
       type: 'click',
       selectors: generateSelectors(el),
@@ -117,18 +118,18 @@ const RECORDING_SCRIPT = `
     if (window.__reportStep) window.__reportStep(JSON.stringify(step));
   }, true);
 
-  // Capture input changes (debounced)
+  // Capture input changes (debounced, skip SELECT — handled by change listener)
   let inputTimer = null;
   document.addEventListener('input', function(e) {
     const el = e.target;
-    if (!el || !el.tagName) return;
+    if (!el || !el.tagName || el.tagName === 'SELECT') return;
     clearTimeout(inputTimer);
     inputTimer = setTimeout(function() {
       const step = {
-        type: el.tagName === 'SELECT' ? 'select' : 'fill',
+        type: 'fill',
         selectors: generateSelectors(el),
         value: getInputValue(el),
-        description: (el.tagName === 'SELECT' ? 'Select: ' : 'Fill: ') + (el.name || el.id || el.placeholder || 'input'),
+        description: 'Fill: ' + (el.name || el.id || el.placeholder || 'input'),
         timestamp: Date.now()
       };
       window.__recordedSteps.push(step);
@@ -136,7 +137,7 @@ const RECORDING_SCRIPT = `
     }, 500);
   }, true);
 
-  // Capture select changes
+  // Capture select changes (single canonical handler for dropdowns)
   document.addEventListener('change', function(e) {
     const el = e.target;
     if (el.tagName !== 'SELECT') return;
@@ -179,10 +180,13 @@ export async function recordWorkflow(): Promise<void> {
   console.log("and the recorder captures each step as a replayable workflow.\n");
 
   const client = new Browserbase({ apiKey: config.browserbase.apiKey });
+  let session: { id: string; connectUrl: string } | null = null;
+  let browser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | null = null;
 
+  try {
   // Create session with debug URL for live viewing
   console.log("Creating Browserbase session...");
-  const session = await client.sessions.create({
+  session = await client.sessions.create({
     projectId: config.browserbase.projectId,
     browserSettings: { solveCaptchas: true },
   });
@@ -192,7 +196,7 @@ export async function recordWorkflow(): Promise<void> {
   console.log("\n📺 LIVE VIEW — Open this URL in your browser to see and interact:");
   console.log(`   ${debugInfo.debuggerFullscreenUrl}\n`);
 
-  const browser = await chromium.connectOverCDP(session.connectUrl);
+  browser = await chromium.connectOverCDP(session.connectUrl);
   const context: BrowserContext = browser.contexts()[0];
   const page: Page = context.pages()[0] ?? await context.newPage();
 
@@ -256,7 +260,6 @@ export async function recordWorkflow(): Promise<void> {
 
   if (steps.length === 0) {
     console.log("No steps recorded. Make sure you interact with the page in the live view.");
-    await browser.close();
     return;
   }
 
@@ -267,7 +270,7 @@ export async function recordWorkflow(): Promise<void> {
   const variables: string[] = [];
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
-    if (step.type === "fill" && step.value) {
+    if ((step.type === "fill" || step.type === "select") && step.value) {
       const varName = await prompt(
         `  Step ${i + 1} (${step.description}) has value "${step.value}"\n` +
         `  Variable name (or Enter to keep as-is): `
@@ -297,11 +300,20 @@ export async function recordWorkflow(): Promise<void> {
   console.log(`\n✅ Workflow saved to: ${outPath}`);
   console.log(`   Run it with: npm run replay -- --workflow=${name}`);
 
-  await browser.close();
-  await client.sessions.update(session.id, {
-    projectId: config.browserbase.projectId,
-    status: "REQUEST_RELEASE",
-  });
+  } finally {
+    // Always release the Browserbase session
+    try {
+      if (browser) await browser.close();
+    } catch { /* best-effort */ }
+    if (session) {
+      try {
+        await client.sessions.update(session.id, {
+          projectId: config.browserbase.projectId,
+          status: "REQUEST_RELEASE",
+        });
+      } catch { /* best-effort */ }
+    }
+  }
 
   process.exit(0);
 }

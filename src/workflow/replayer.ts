@@ -87,6 +87,13 @@ export async function replayWorkflow(
 
   console.log(`[replayer] Executing workflow: ${workflow.name} (${workflow.steps.length} steps)`);
 
+  // Navigate to the recorded start URL before executing steps
+  if (workflow.startUrl) {
+    console.log(`[replayer] Navigating to start URL: ${workflow.startUrl}`);
+    await page.goto(workflow.startUrl, { waitUntil: "domcontentloaded", timeout: stepTimeout });
+    await page.waitForTimeout(STEP_DELAY);
+  }
+
   let stepsCompleted = 0;
 
   for (let i = 0; i < workflow.steps.length; i++) {

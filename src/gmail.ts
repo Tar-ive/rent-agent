@@ -17,7 +17,7 @@ export function isGmailConfigured(): boolean {
   return !!(config.gmail.clientId && config.gmail.clientSecret && config.gmail.refreshToken);
 }
 
-export async function pollForOtp(): Promise<string | null> {
+export async function pollForOtp(cutoffTimestamp?: number): Promise<string | null> {
   if (!isGmailConfigured()) {
     console.log("[gmail] Gmail API not configured, skipping auto-OTP");
     return null;
@@ -26,8 +26,8 @@ export async function pollForOtp(): Promise<string | null> {
   const gmail = getGmailClient();
   const startTime = Date.now();
 
-  // Record the timestamp just before we start polling so we only look at new emails
-  const afterTimestamp = Math.floor(startTime / 1000);
+  // Use provided cutoff (from before OTP was triggered) or fall back to now
+  const afterTimestamp = cutoffTimestamp ?? Math.floor(startTime / 1000);
 
   console.log("[gmail] Polling for OTP email...");
 

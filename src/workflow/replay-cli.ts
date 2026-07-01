@@ -56,34 +56,38 @@ async function main(): Promise<void> {
   }
 
   // Launch browser and ensure logged in
+  let success = false;
   await launchBrowser();
-  const page = await getPage();
+  try {
+    const page = await getPage();
 
-  if (!(await isLoggedIn(page))) {
-    console.log("[replay] Not logged in, attempting login...");
-    const ok = await login(page);
-    if (!ok) {
-      console.error("[replay] Login failed. Run 'npm run login' first.");
-      await closeBrowser();
-      process.exit(1);
+    if (!(await isLoggedIn(page))) {
+      console.log("[replay] Not logged in, attempting login...");
+      const ok = await login(page);
+      if (!ok) {
+        console.error("[replay] Login failed. Run 'npm run login' first.");
+        process.exit(1);
+      }
     }
+
+    // Replay the workflow
+    const result = await replayWorkflow(page, workflow, {
+      variables,
+      screenshots: true,
+      stopOnError: true,
+    });
+
+    if (result.success) {
+      console.log(`\n✅ Workflow completed successfully (${result.stepsCompleted} steps)`);
+    } else {
+      console.error(`\n❌ Workflow failed at step ${result.stepsCompleted + 1}: ${result.error}`);
+    }
+
+    success = result.success;
+  } finally {
+    await closeBrowser();
   }
-
-  // Replay the workflow
-  const result = await replayWorkflow(page, workflow, {
-    variables,
-    screenshots: true,
-    stopOnError: true,
-  });
-
-  if (result.success) {
-    console.log(`\n✅ Workflow completed successfully (${result.stepsCompleted} steps)`);
-  } else {
-    console.error(`\n❌ Workflow failed at step ${result.stepsCompleted + 1}: ${result.error}`);
-  }
-
-  await closeBrowser();
-  process.exit(result.success ? 0 : 1);
+  process.exit(success ? 0 : 1);
 }
 
 main().catch((err) => {

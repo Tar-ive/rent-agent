@@ -32,22 +32,22 @@ async function main(): Promise<void> {
   console.log("[main] - Run `npm run login` first if you haven't authenticated yet\n");
 
   // Graceful shutdown
-  const shutdown = async () => {
+  const shutdown = async (code = 0) => {
     console.log("\n[main] Shutting down...");
     stopTelegramBot();
     await closeBrowser();
-    process.exit(0);
+    process.exit(code);
   };
-  process.on("SIGINT", () => void shutdown());
-  process.on("SIGTERM", () => void shutdown());
+  process.on("SIGINT", () => void shutdown(0));
+  process.on("SIGTERM", () => void shutdown(0));
 
   process.on("unhandledRejection", (reason) => {
     console.error("[main] Unhandled rejection:", reason);
-    void shutdown();
+    void shutdown(1);
   });
   process.on("uncaughtException", (err) => {
     console.error("[main] Uncaught exception:", err);
-    void shutdown();
+    void shutdown(1);
   });
 }
 

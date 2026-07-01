@@ -28,25 +28,28 @@ export function startTelegramBot(): void {
   bot.on("message:text", async (ctx) => {
     const chatId = ctx.chat.id.toString();
 
+    // Fail closed: reject all messages if TELEGRAM_CHAT_ID is not configured
+    if (!config.telegram.chatId) {
+      console.warn(`[telegram] TELEGRAM_CHAT_ID not set — rejecting message from chat ${chatId}. Set TELEGRAM_CHAT_ID=${chatId} in .env to authorize.`);
+      await ctx.reply("Bot is not configured yet. Ask the admin to set TELEGRAM_CHAT_ID.");
+      return;
+    }
+
     // Only respond to the authorized user
-    if (config.telegram.chatId && chatId !== config.telegram.chatId) {
+    if (chatId !== config.telegram.chatId) {
       console.warn(`[telegram] Rejected message from unauthorized chat: ${chatId}`);
       return;
     }
 
-    // Auto-save chat ID on first message if not configured
-    if (!config.telegram.chatId) {
-      console.log(`[telegram] Auto-detected chat ID: ${chatId} — add TELEGRAM_CHAT_ID=${chatId} to .env`);
-    }
-
     const text = ctx.message.text.trim();
-    console.log(`[telegram] Received: ${text}`);
+    const isOtp = /^\d{4,8}$/.test(text);
+    console.log(`[telegram] Received message from ${chatId} (${isOtp ? "OTP" : text.length + " chars"})`);
 
     // Check if this is an OTP code
-    if (/^\d{4,8}$/.test(text)) {
+    if (isOtp) {
       console.log("[telegram] Detected OTP code, supplying to auth flow...");
       supplyOtp(text);
-      await ctx.reply("✅ Code received, logging in...");
+      await ctx.reply("Code received, logging in...");
       return;
     }
 

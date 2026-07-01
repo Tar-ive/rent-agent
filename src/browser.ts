@@ -93,23 +93,29 @@ export async function saveCookies(): Promise<void> {
 }
 
 export async function closeBrowser(): Promise<void> {
-  if (browser) {
-    await browser.close();
-    browser = null;
-  }
-
-  if (sessionId) {
-    try {
-      const client = getClient();
-      await client.sessions.update(sessionId, {
-        projectId: config.browserbase.projectId,
-        status: "REQUEST_RELEASE",
-      });
-      console.log("[browser] Session released");
-    } catch (err) {
-      console.warn("[browser] Failed to release session:", err);
+  const sid = sessionId;
+  try {
+    if (browser) {
+      await browser.close();
+      browser = null;
     }
-    sessionId = null;
+  } catch (err) {
+    console.warn("[browser] Error closing browser:", err);
+    browser = null;
+  } finally {
+    if (sid) {
+      try {
+        const client = getClient();
+        await client.sessions.update(sid, {
+          projectId: config.browserbase.projectId,
+          status: "REQUEST_RELEASE",
+        });
+        console.log("[browser] Session released");
+      } catch (err) {
+        console.warn("[browser] Failed to release session:", err);
+      }
+      sessionId = null;
+    }
   }
 }
 

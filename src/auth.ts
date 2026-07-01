@@ -61,6 +61,9 @@ export async function login(page: Page): Promise<boolean> {
   // Register OTP waiter BEFORE the delay so early replies are captured
   const manualOtpPromise = waitForOtp();
 
+  // Capture cutoff BEFORE the OTP email is sent so we don't miss fast deliveries
+  const otpCutoff = Math.floor(Date.now() / 1000);
+
   await page.waitForTimeout(3000);
 
   let otp: string | null = null;
@@ -69,7 +72,7 @@ export async function login(page: Page): Promise<boolean> {
     // Auto-read OTP from Gmail — fully hands-free
     console.log("[auth] Gmail API configured — auto-reading OTP from inbox...");
     await sendNotification("RentCafe login triggered — reading OTP from Gmail automatically...");
-    otp = await gmailPollForOtp();
+    otp = await gmailPollForOtp(otpCutoff);
   }
 
   if (!otp) {
