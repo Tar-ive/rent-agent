@@ -83,7 +83,7 @@ npm run submit -- "pest control"
 
 ## Architecture
 
-```
+```text
 User (SMS) → Twilio → Express Server → Handler
                                           ↓
                                     Playwright → Browserbase (cloud) → RentCafe
@@ -103,7 +103,7 @@ RentCafe uses Cloudflare Turnstile which blocks automated browsers. Browserbase 
 
 | Env Variable | Description | Default |
 |---|---|---|
-| `RENTCAFE_URL` | Login page URL | Atlantic Palazzo Living |
+| `RENTCAFE_URL` | Your property's RentCafe login URL | — |
 | `RENTCAFE_EMAIL` | Your login email | — |
 | `BROWSERBASE_API_KEY` | Browserbase API key | — |
 | `BROWSERBASE_PROJECT_ID` | Browserbase project ID | — |

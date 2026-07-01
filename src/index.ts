@@ -29,6 +29,15 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => void shutdown());
   process.on("SIGTERM", () => void shutdown());
+
+  process.on("unhandledRejection", (reason) => {
+    console.error("[main] Unhandled rejection:", reason);
+    void shutdown();
+  });
+  process.on("uncaughtException", (err) => {
+    console.error("[main] Uncaught exception:", err);
+    void shutdown();
+  });
 }
 
 main().catch((err) => {

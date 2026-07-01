@@ -94,9 +94,11 @@ export async function submitMaintenanceRequest(
         }
       }
       if (!matched && options.length > 1) {
-        // Select the first non-empty option as fallback
         const value = await options[1].getAttribute("value");
-        if (value) await categorySelect.selectOption(value);
+        if (value) {
+          console.warn(`[maintenance] No dropdown match for "${request.category}", falling back to first option`);
+          await categorySelect.selectOption(value);
+        }
       }
     }
 

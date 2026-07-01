@@ -58,7 +58,7 @@ async function interactiveLogin(): Promise<void> {
 
   // Step 2: Fill email
   if (config.rentcafe.email) {
-    console.log(`Filling email: ${config.rentcafe.email}`);
+    console.log("Filling email...");
     const emailInput = await page.$(
       'input[type="email"], input[name*="email" i], input[id*="email" i], input[type="text"]'
     );
