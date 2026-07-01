@@ -203,30 +203,7 @@ export async function recordWorkflow(): Promise<void> {
   const steps: WorkflowStep[] = [];
   let startUrl = "";
 
-  // Expose function for the recording script to report steps
-  await page.exposeFunction("__reportStep", (stepJson: string) => {
-    const step = JSON.parse(stepJson) as WorkflowStep;
-    steps.push(step);
-    const desc = step.description ?? `${step.type}`;
-    console.log(`  📝 Step ${steps.length}: ${desc}`);
-  });
-
-  // Inject recording script on every navigation
-  await context.addInitScript(RECORDING_SCRIPT);
-
-  // Also inject into current page
-  await page.evaluate(RECORDING_SCRIPT);
-
-  // Track navigations
-  page.on("framenavigated", (frame) => {
-    if (frame === page.mainFrame()) {
-      const url = frame.url();
-      if (!startUrl) startUrl = url;
-      console.log(`  🔗 Navigated to: ${url}`);
-    }
-  });
-
-  // Auto-login before recording so user doesn't have to deal with CAPTCHA
+  // --- Auto-login BEFORE activating recording (so login steps aren't captured) ---
   console.log("Logging into RentCafe automatically...");
   const { login } = await import("../auth.js");
   const { isLoggedIn } = await import("../browser.js");
@@ -252,11 +229,29 @@ export async function recordWorkflow(): Promise<void> {
     console.log("Login successful!");
   }
 
-  // Now logged in — set start URL to wherever we are post-login
+  // --- Now activate recording (login steps excluded) ---
   startUrl = page.url();
 
-  // Re-inject recording script after login navigation
+  // Expose function for the recording script to report steps
+  await page.exposeFunction("__reportStep", (stepJson: string) => {
+    const step = JSON.parse(stepJson) as WorkflowStep;
+    steps.push(step);
+    const desc = step.description ?? `${step.type}`;
+    console.log(`  📝 Step ${steps.length}: ${desc}`);
+  });
+
+  // Inject recording script on every navigation (only captures post-login interactions)
+  await context.addInitScript(RECORDING_SCRIPT);
   await page.evaluate(RECORDING_SCRIPT);
+
+  // Track navigations
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) {
+      const url = frame.url();
+      if (!startUrl) startUrl = url;
+      console.log(`  🔗 Navigated to: ${url}`);
+    }
+  });
 
   console.log("\n✅ Logged in! You can now record your workflow.");
   console.log("   Open the live view URL above and navigate to the form you want to record.");
