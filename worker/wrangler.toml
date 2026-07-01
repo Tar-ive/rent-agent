@@ -2,5 +2,5 @@ name = "rent-agent-telegram"
 main = "src/index.ts"
 compatibility_date = "2024-09-01"
 
-[vars]
-TELEGRAM_CHAT_ID = "7480420973"
+# TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GITHUB_TOKEN, GITHUB_REPO
+# are stored as secrets via: npx wrangler secret put <NAME>

@@ -18,7 +18,6 @@ function sendTelegram(text: string): Promise<void> {
     const data = JSON.stringify({
       chat_id: config.telegram.chatId,
       text,
-      parse_mode: "Markdown",
     });
     const options = {
       hostname: "api.telegram.org",
