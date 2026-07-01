@@ -226,8 +226,8 @@ export async function recordWorkflow(): Promise<void> {
     }
   });
 
-  // Navigate to RentCafe
-  const targetUrl = config.rentcafe.url.replace("/userlogin", "");
+  // Navigate to RentCafe login page (use full URL to avoid 404)
+  const targetUrl = config.rentcafe.url;
   console.log(`Navigating to: ${targetUrl}`);
   await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
   startUrl = page.url();
