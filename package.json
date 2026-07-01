@@ -11,6 +11,8 @@
     "login": "tsx src/login.ts",
     "submit": "tsx src/submit.ts",
     "gmail-setup": "tsx src/gmail-setup.ts",
+    "record": "tsx src/workflow/recorder.ts",
+    "replay": "tsx src/workflow/replay-cli.ts",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit"
   },
