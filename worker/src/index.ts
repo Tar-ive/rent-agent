@@ -41,13 +41,19 @@ async function triggerGitHubAction(env: Env, eventType: string, payload: Record<
       Authorization: `Bearer ${env.GITHUB_TOKEN}`,
       Accept: "application/vnd.github.v3+json",
       "Content-Type": "application/json",
+      "User-Agent": "rent-agent-telegram-worker",
     },
     body: JSON.stringify({
       event_type: eventType,
       client_payload: payload,
     }),
   });
-  return resp.status === 204;
+  if (resp.status !== 204) {
+    const body = await resp.text().catch(() => "");
+    console.error(`GitHub dispatch failed (${resp.status}): ${body}`);
+    return false;
+  }
+  return true;
 }
 
 function parseIntent(text: string): { type: string; description?: string } {
