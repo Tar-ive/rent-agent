@@ -1,7 +1,8 @@
 import type { Page } from "playwright";
 import { config } from "./config.js";
 import { saveCookies, isLoggedIn } from "./browser.js";
-import { sendSms } from "./sms.js";
+import { sendNotification } from "./notify.js";
+import { isGmailConfigured, pollForOtp as gmailPollForOtp } from "./gmail.js";
 
 const LOGIN_TIMEOUT = 5 * 60_000; // 5 minutes to wait for OTP
 
@@ -57,22 +58,34 @@ export async function login(page: Page): Promise<boolean> {
     console.log("[auth] Pressed Enter to submit email");
   }
 
-  // Register OTP waiter BEFORE the delay/SMS so early replies are captured
-  const otpPromise = waitForOtp();
+  // Register OTP waiter BEFORE the delay so early replies are captured
+  const manualOtpPromise = waitForOtp();
 
   await page.waitForTimeout(3000);
 
-  // Step 4: Notify user via SMS that a code is needed
-  await sendSms("RentCafe login: check your email for a verification code and reply with it here.");
-  console.log("[auth] Waiting for OTP code via SMS...");
+  let otp: string | null = null;
 
-  // Wait for OTP to arrive via the pendingOtp mechanism
-  const otp = await otpPromise;
+  if (isGmailConfigured()) {
+    // Auto-read OTP from Gmail — fully hands-free
+    console.log("[auth] Gmail API configured — auto-reading OTP from inbox...");
+    await sendNotification("RentCafe login triggered — reading OTP from Gmail automatically...");
+    otp = await gmailPollForOtp();
+  }
+
+  if (!otp) {
+    // Fall back to manual OTP entry via Telegram/SMS
+    await sendNotification("RentCafe login: check your email for a verification code and reply with it here.");
+    console.log("[auth] Waiting for OTP code via message...");
+    otp = await manualOtpPromise;
+  }
+
   if (!otp) {
     console.error("[auth] No OTP received within timeout");
-    await sendSms("Login timed out — no verification code received. Please try again.");
+    await sendNotification("Login timed out — no verification code received. Please try again.");
     return false;
   }
+
+  console.log("[auth] OTP received, entering code...");
 
   // Step 5: Fill OTP field (sequential selectors, exclude email-like inputs)
   const otpInput =
@@ -115,7 +128,7 @@ export async function login(page: Page): Promise<boolean> {
   if (await isLoggedIn(page)) {
     console.log("[auth] Login successful!");
     await saveCookies();
-    await sendSms("Successfully logged into RentCafe.");
+    await sendNotification("Successfully logged into RentCafe.");
     return true;
   }
 

@@ -10,6 +10,7 @@
     "start": "node dist/index.js",
     "login": "tsx src/login.ts",
     "submit": "tsx src/submit.ts",
+    "gmail-setup": "tsx src/gmail-setup.ts",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit"
   },
@@ -17,6 +18,8 @@
     "@browserbasehq/sdk": "^2.14.1",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
+    "googleapis": "^173.0.0",
+    "grammy": "^1.44.0",
     "node-cron": "^3.0.3",
     "playwright": "^1.48.0",
     "twilio": "^5.3.0"

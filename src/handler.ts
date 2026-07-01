@@ -1,24 +1,25 @@
 import { getPage, isLoggedIn } from "./browser.js";
 import { login } from "./auth.js";
 import { parseMaintenanceRequest, submitMaintenanceRequest } from "./maintenance.js";
-import { sendSms } from "./sms.js";
+import { sendNotification } from "./notify.js";
 
 export async function handleIncomingSms(message: string, _from: string): Promise<string> {
   const lower = message.toLowerCase().trim();
 
   // Help command
-  if (lower === "help" || lower === "?") {
+  if (lower === "help" || lower === "?" || lower === "/help") {
     return [
       "Rent Agent commands:",
       "- Send a description to create a maintenance request (e.g. 'leaky faucet in bathroom')",
       "- 'pest control' - submit a pest control request",
       "- 'status' - check agent status",
+      "- 'login' - trigger re-authentication",
       "- 'help' - show this message",
     ].join("\n");
   }
 
   // Status check
-  if (lower === "status") {
+  if (lower === "status" || lower === "/status") {
     const page = await getPage();
     const loggedIn = await isLoggedIn(page);
     return loggedIn
@@ -27,10 +28,10 @@ export async function handleIncomingSms(message: string, _from: string): Promise
   }
 
   // Manual login trigger
-  if (lower === "login") {
+  if (lower === "login" || lower === "/login") {
     const page = await getPage();
     const success = await login(page);
-    return success ? "Login successful!" : "Login failed. Please check the browser window.";
+    return success ? "Login successful!" : "Login failed. Please try again.";
   }
 
   // Pest control shortcut
@@ -90,5 +91,5 @@ export async function submitPestControlRequest(): Promise<void> {
   console.log("[scheduler] Submitting weekly pest control request...");
   const reply = await handleIncomingSms("pest control", "scheduler");
   console.log(`[scheduler] Result: ${reply}`);
-  await sendSms(`[Scheduled] ${reply}`);
+  await sendNotification(`[Scheduled] ${reply}`);
 }

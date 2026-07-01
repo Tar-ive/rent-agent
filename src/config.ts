@@ -18,6 +18,16 @@ export const config = {
     projectId: requireEnv("BROWSERBASE_PROJECT_ID"),
     contextId: process.env.BROWSERBASE_CONTEXT_ID ?? "",
   },
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
+    chatId: process.env.TELEGRAM_CHAT_ID ?? "",
+  },
+  gmail: {
+    clientId: process.env.GMAIL_CLIENT_ID ?? "",
+    clientSecret: process.env.GMAIL_CLIENT_SECRET ?? "",
+    refreshToken: process.env.GMAIL_REFRESH_TOKEN ?? "",
+    otpSender: process.env.GMAIL_OTP_SENDER ?? "noreply",
+  },
   twilio: {
     accountSid: process.env.TWILIO_ACCOUNT_SID ?? "",
     authToken: process.env.TWILIO_AUTH_TOKEN ?? "",
