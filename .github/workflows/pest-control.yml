@@ -12,6 +12,15 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Notify start
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d text="🐛 Weekly pest control run started — confirmation screenshot coming in a few minutes."
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -43,11 +52,11 @@ jobs:
         run: npx tsx src/pest-control.ts
 
       - name: Notify on failure
-        if: failure()
+        if: failure() || cancelled()
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d text="⚠️ Weekly pest control GitHub Action failed. Check: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            -d text="⚠️ Weekly pest control run did not complete (failed or timed out). Check: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
