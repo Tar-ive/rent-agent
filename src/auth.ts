@@ -67,10 +67,10 @@ async function automatedCaptchaLogin(page: Page): Promise<boolean> {
   console.log(`[auth] v2 token received (${v2Token.length} chars)`);
 
   // Inject token + submit
-  const v2Escaped = v2Token.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const v2Safe = JSON.stringify(v2Token);
   await page.evaluate(`
     (function() {
-      var token = '${v2Escaped}';
+      var token = ${v2Safe};
       var ta = document.getElementById('g-recaptcha-response');
       if (ta) { ta.value = token; ta.innerHTML = token; }
       var rcDiv = document.getElementById('recaptcha');
@@ -245,7 +245,8 @@ async function manualOtpLogin(page: Page): Promise<boolean> {
     (await page.$('button[type="submit"]:visible')) ??
     (await page.$('button:has-text("Send Code"):visible')) ??
     (await page.$('button:has-text("Continue"):visible')) ??
-    (await page.$('button:has-text("Sign In"):visible'));
+    (await page.$('button:has-text("Sign In"):visible')) ??
+    (await page.$('button:has-text("Log In"):visible'));
   if (submitBtn) {
     await submitBtn.click();
   } else {
@@ -285,7 +286,8 @@ async function manualOtpLogin(page: Page): Promise<boolean> {
     (await page.$('input[name*="otp" i]')) ??
     (await page.$('input[name*="verification" i]')) ??
     (await page.$('input[id*="code" i]')) ??
-    (await page.$('input[id*="otp" i]'));
+    (await page.$('input[id*="otp" i]')) ??
+    (await page.$('input[id*="verification" i]'));
   if (otpInput) {
     await otpInput.fill(otp);
   } else {
@@ -302,8 +304,10 @@ async function manualOtpLogin(page: Page): Promise<boolean> {
   // Submit OTP
   const otpSubmit =
     (await page.$('button:has-text("Verify"):visible')) ??
+    (await page.$('button:has-text("Submit"):visible')) ??
     (await page.$('button[type="submit"]:visible')) ??
-    (await page.$('button:has-text("Continue"):visible'));
+    (await page.$('button:has-text("Continue"):visible')) ??
+    (await page.$('button:has-text("Sign In"):visible'));
   if (otpSubmit) {
     await otpSubmit.click();
   } else {

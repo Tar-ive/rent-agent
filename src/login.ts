@@ -16,13 +16,18 @@ import type { Page } from "playwright";
 import { Solver } from "2captcha-ts";
 import { launchBrowser, getPage, closeBrowser, isLoggedIn, getContextId } from "./browser.js";
 import { config } from "./config.js";
-import { pollForOtp } from "./gmail.js";
+import { pollForOtp, isGmailConfigured } from "./gmail.js";
 
 export async function automatedLogin(): Promise<boolean> {
   console.log("[login] Starting automated login...");
 
   if (!config.captcha.apiKey) {
     console.error("[login] CAPTCHA_API_KEY not set — cannot solve reCAPTCHA");
+    return false;
+  }
+
+  if (!isGmailConfigured()) {
+    console.error("[login] Gmail not configured — cannot poll for OTP");
     return false;
   }
 
@@ -75,10 +80,10 @@ export async function automatedLogin(): Promise<boolean> {
     console.log(`[login] v2 token received (${v2Token.length} chars)`);
 
     // Step 6: Inject v2 token + set failedcaptchaent + submit OTP action
-    const v2Escaped = v2Token.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const v2Safe = JSON.stringify(v2Token);
     await page.evaluate(`
       (function() {
-        var token = '${v2Escaped}';
+        var token = ${v2Safe};
         var ta = document.getElementById('g-recaptcha-response');
         if (ta) { ta.value = token; ta.innerHTML = token; }
         var rcDiv = document.getElementById('recaptcha');
