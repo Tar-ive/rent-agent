@@ -8,6 +8,7 @@
  * Cookies are automatically persisted via Browserbase contexts.
  */
 
+import type { Page } from "playwright";
 import { launchBrowser, getPage, closeBrowser, isLoggedIn, getContextId } from "./browser.js";
 import { config } from "./config.js";
 import readline from "node:readline";
@@ -20,6 +21,15 @@ async function prompt(question: string): Promise<string> {
       resolve(answer.trim());
     });
   });
+}
+
+async function clickOrPrompt(page: Page, selector: string, promptText: string): Promise<void> {
+  const btn = await page.$(selector);
+  if (btn) {
+    await btn.click();
+  } else {
+    await prompt(promptText);
+  }
 }
 
 async function interactiveLogin(): Promise<void> {
@@ -56,12 +66,14 @@ async function interactiveLogin(): Promise<void> {
     console.log("No 'Continue with Email' button found, looking for email input directly...");
   }
 
-  // Step 2: Fill email
+  // Step 2: Fill email (sequential selectors, most specific first)
   if (config.rentcafe.email) {
     console.log("Filling email...");
-    const emailInput = await page.$(
-      'input[type="email"], input[name*="email" i], input[id*="email" i], input[type="text"]'
-    );
+    const emailInput =
+      (await page.$('input[type="email"]')) ??
+      (await page.$('input[name*="email" i]')) ??
+      (await page.$('input[id*="email" i]')) ??
+      (await page.$('input[type="text"]'));
     if (emailInput) {
       await emailInput.fill(config.rentcafe.email);
     }
@@ -70,41 +82,46 @@ async function interactiveLogin(): Promise<void> {
   }
 
   // Step 3: Submit to trigger OTP
-  const submitBtn = await page.$(
-    'button[type="submit"], input[type="submit"], button:has-text("Continue"), button:has-text("Sign In"), button:has-text("Send Code")'
+  await clickOrPrompt(
+    page,
+    'button[type="submit"]:visible, button:has-text("Continue"):visible, button:has-text("Sign In"):visible, button:has-text("Send Code"):visible',
+    "Click 'Continue' or 'Sign In' in the browser, then press Enter here..."
   );
-  if (submitBtn) {
-    await submitBtn.click();
-    console.log("Email submitted, OTP should be sent to your email.");
-  } else {
-    await prompt("Click 'Continue' or 'Sign In' in the browser, then press Enter here...");
-  }
+  console.log("Email submitted, OTP should be sent to your email.");
 
   await page.waitForTimeout(3000);
 
-  // Step 4: Enter OTP
+  // Step 4: Enter OTP (sequential selectors for OTP field)
   const otp = await prompt("\nEnter the verification code from your email: ");
   if (otp) {
-    const otpInput = await page.$(
-      'input[name*="code" i], input[name*="otp" i], input[name*="verification" i], input[type="tel"], input[type="number"]'
-    );
+    const otpInput =
+      (await page.$('input[name*="code" i]')) ??
+      (await page.$('input[name*="otp" i]')) ??
+      (await page.$('input[name*="verification" i]')) ??
+      (await page.$('input[id*="code" i]')) ??
+      (await page.$('input[id*="otp" i]')) ??
+      (await page.$('input[type="tel"]')) ??
+      (await page.$('input[type="number"]'));
     if (otpInput) {
       await otpInput.fill(otp);
     } else {
+      // Fallback: find a visible input that isn't the email field
       const visibleInputs = await page.$$("input:visible");
-      if (visibleInputs.length > 0) {
-        await visibleInputs[0].fill(otp);
+      for (const input of visibleInputs) {
+        const type = (await input.getAttribute("type"))?.toLowerCase() ?? "";
+        const name = (await input.getAttribute("name"))?.toLowerCase() ?? "";
+        if (type === "email" || name.includes("email")) continue;
+        if (type === "hidden" || type === "checkbox" || type === "radio") continue;
+        await input.fill(otp);
+        break;
       }
     }
 
-    const otpSubmit = await page.$(
-      'button[type="submit"], input[type="submit"], button:has-text("Verify"), button:has-text("Submit"), button:has-text("Continue")'
+    await clickOrPrompt(
+      page,
+      'button:has-text("Verify"):visible, button[type="submit"]:visible, button:has-text("Submit"):visible, button:has-text("Continue"):visible',
+      "Click 'Verify' or 'Submit' in the browser, then press Enter here..."
     );
-    if (otpSubmit) {
-      await otpSubmit.click();
-    } else {
-      await page.keyboard.press("Enter");
-    }
   }
 
   await page.waitForTimeout(5000);

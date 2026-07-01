@@ -28,11 +28,13 @@ export async function login(page: Page): Promise<boolean> {
     await page.waitForTimeout(3000);
   }
 
-  // Step 2: Fill email field
+  // Step 2: Fill email field (sequential selectors, most specific first)
   console.log("[auth] Filling email...");
-  const emailInput = await page.$(
-    'input[type="email"], input[name*="email" i], input[id*="email" i], input[type="text"]'
-  );
+  const emailInput =
+    (await page.$('input[type="email"]')) ??
+    (await page.$('input[name*="email" i]')) ??
+    (await page.$('input[id*="email" i]')) ??
+    (await page.$('input[type="text"]'));
   if (emailInput) {
     await emailInput.fill(config.rentcafe.email);
   } else {
@@ -40,10 +42,13 @@ export async function login(page: Page): Promise<boolean> {
     return false;
   }
 
-  // Step 3: Click submit/continue to trigger OTP
-  const submitBtn = await page.$(
-    'button[type="submit"], input[type="submit"], button:has-text("Continue"), button:has-text("Sign In"), button:has-text("Send Code"), button:has-text("Log In")'
-  );
+  // Step 3: Click submit/continue to trigger OTP (scope to visible buttons only)
+  const submitBtn =
+    (await page.$('button[type="submit"]:visible')) ??
+    (await page.$('button:has-text("Send Code"):visible')) ??
+    (await page.$('button:has-text("Continue"):visible')) ??
+    (await page.$('button:has-text("Sign In"):visible')) ??
+    (await page.$('button:has-text("Log In"):visible'));
   if (submitBtn) {
     await submitBtn.click();
     console.log("[auth] Submitted email, waiting for OTP...");
@@ -52,6 +57,9 @@ export async function login(page: Page): Promise<boolean> {
     console.log("[auth] Pressed Enter to submit email");
   }
 
+  // Register OTP waiter BEFORE the delay/SMS so early replies are captured
+  const otpPromise = waitForOtp();
+
   await page.waitForTimeout(3000);
 
   // Step 4: Notify user via SMS that a code is needed
@@ -59,34 +67,42 @@ export async function login(page: Page): Promise<boolean> {
   console.log("[auth] Waiting for OTP code via SMS...");
 
   // Wait for OTP to arrive via the pendingOtp mechanism
-  const otp = await waitForOtp();
+  const otp = await otpPromise;
   if (!otp) {
     console.error("[auth] No OTP received within timeout");
     await sendSms("Login timed out — no verification code received. Please try again.");
     return false;
   }
 
-  // Step 5: Fill OTP field
-  const otpInput = await page.$(
-    'input[name*="code" i], input[name*="otp" i], input[name*="verification" i], input[id*="code" i], input[type="tel"], input[type="number"]'
-  );
+  // Step 5: Fill OTP field (sequential selectors, exclude email-like inputs)
+  const otpInput =
+    (await page.$('input[name*="code" i]')) ??
+    (await page.$('input[name*="otp" i]')) ??
+    (await page.$('input[name*="verification" i]')) ??
+    (await page.$('input[id*="code" i]')) ??
+    (await page.$('input[id*="otp" i]')) ??
+    (await page.$('input[id*="verification" i]'));
   if (otpInput) {
     await otpInput.fill(otp);
   } else {
-    // Try first visible input
+    // Fallback: find a visible input that is NOT the email field
     const visibleInputs = await page.$$("input:visible");
-    if (visibleInputs.length > 0) {
-      await visibleInputs[0].fill(otp);
+    const nonEmailInput = await findNonEmailInput(visibleInputs);
+    if (nonEmailInput) {
+      await nonEmailInput.fill(otp);
     } else {
       console.error("[auth] Could not find OTP input field");
       return false;
     }
   }
 
-  // Step 6: Submit OTP
-  const otpSubmit = await page.$(
-    'button[type="submit"], input[type="submit"], button:has-text("Verify"), button:has-text("Submit"), button:has-text("Continue"), button:has-text("Sign In")'
-  );
+  // Step 6: Submit OTP (scope to visible buttons in the current step)
+  const otpSubmit =
+    (await page.$('button:has-text("Verify"):visible')) ??
+    (await page.$('button:has-text("Submit"):visible')) ??
+    (await page.$('button[type="submit"]:visible')) ??
+    (await page.$('button:has-text("Continue"):visible')) ??
+    (await page.$('button:has-text("Sign In"):visible'));
   if (otpSubmit) {
     await otpSubmit.click();
   } else {
@@ -105,6 +121,18 @@ export async function login(page: Page): Promise<boolean> {
 
   console.error("[auth] Login may have failed — check the browser");
   return false;
+}
+
+async function findNonEmailInput(inputs: Awaited<ReturnType<Page["$$"]>>): Promise<Awaited<ReturnType<Page["$"]>>> {
+  for (const input of inputs) {
+    const type = (await input.getAttribute("type"))?.toLowerCase() ?? "";
+    const name = (await input.getAttribute("name"))?.toLowerCase() ?? "";
+    const id = (await input.getAttribute("id"))?.toLowerCase() ?? "";
+    if (type === "email" || name.includes("email") || id.includes("email")) continue;
+    if (type === "hidden" || type === "checkbox" || type === "radio") continue;
+    return input;
+  }
+  return null;
 }
 
 // --- OTP exchange mechanism ---
