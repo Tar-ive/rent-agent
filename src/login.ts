@@ -8,7 +8,7 @@
  * Cookies are automatically persisted via Browserbase contexts.
  */
 
-import { launchBrowser, getPage, closeBrowser, isLoggedIn } from "./browser.js";
+import { launchBrowser, getPage, closeBrowser, isLoggedIn, getContextId } from "./browser.js";
 import { config } from "./config.js";
 import readline from "node:readline";
 
@@ -31,10 +31,11 @@ async function interactiveLogin(): Promise<void> {
   const page = await getPage();
 
   console.log(`Navigating to: ${config.rentcafe.url}`);
-  await page.goto(config.rentcafe.url, { waitUntil: "networkidle", timeout: 60_000 });
+  await page.goto(config.rentcafe.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
 
-  // Wait a moment for any Cloudflare challenge to be solved
-  await page.waitForTimeout(5000);
+  // Wait for Cloudflare to resolve
+  console.log("Waiting for Cloudflare challenge to resolve...");
+  await page.waitForTimeout(10_000);
 
   // Check if already logged in from a previous session
   if (await isLoggedIn(page)) {
@@ -43,31 +44,45 @@ async function interactiveLogin(): Promise<void> {
     process.exit(0);
   }
 
-  // Auto-fill email if configured
+  // Step 1: Click "Continue with Email"
+  console.log('\nClicking "Continue with Email"...');
+  const emailBtn = await page.$(
+    'button:has-text("Continue with Email"), a:has-text("Continue with Email")'
+  );
+  if (emailBtn) {
+    await emailBtn.click();
+    await page.waitForTimeout(3000);
+  } else {
+    console.log("No 'Continue with Email' button found, looking for email input directly...");
+  }
+
+  // Step 2: Fill email
   if (config.rentcafe.email) {
-    console.log(`\nFilling email: ${config.rentcafe.email}`);
+    console.log(`Filling email: ${config.rentcafe.email}`);
     const emailInput = await page.$(
       'input[type="email"], input[name*="email" i], input[id*="email" i], input[type="text"]'
     );
     if (emailInput) {
       await emailInput.fill(config.rentcafe.email);
     }
+  } else {
+    await prompt("Enter your email in the browser, then press Enter here...");
   }
 
-  // Click submit to trigger OTP
+  // Step 3: Submit to trigger OTP
   const submitBtn = await page.$(
-    'button[type="submit"], input[type="submit"], button:has-text("Sign In"), button:has-text("Log In"), button:has-text("Continue"), button:has-text("Send Code")'
+    'button[type="submit"], input[type="submit"], button:has-text("Continue"), button:has-text("Sign In"), button:has-text("Send Code")'
   );
   if (submitBtn) {
     await submitBtn.click();
     console.log("Email submitted, OTP should be sent to your email.");
   } else {
-    await prompt("Click 'Sign In' or 'Send Code' in the browser, then press Enter here...");
+    await prompt("Click 'Continue' or 'Sign In' in the browser, then press Enter here...");
   }
 
   await page.waitForTimeout(3000);
 
-  // Wait for OTP from user
+  // Step 4: Enter OTP
   const otp = await prompt("\nEnter the verification code from your email: ");
   if (otp) {
     const otpInput = await page.$(
@@ -76,14 +91,12 @@ async function interactiveLogin(): Promise<void> {
     if (otpInput) {
       await otpInput.fill(otp);
     } else {
-      // Try first visible input on the page
       const visibleInputs = await page.$$("input:visible");
       if (visibleInputs.length > 0) {
         await visibleInputs[0].fill(otp);
       }
     }
 
-    // Submit OTP
     const otpSubmit = await page.$(
       'button[type="submit"], input[type="submit"], button:has-text("Verify"), button:has-text("Submit"), button:has-text("Continue")'
     );
@@ -102,7 +115,13 @@ async function interactiveLogin(): Promise<void> {
     console.log("\nCouldn't confirm login, but cookies are saved via Browserbase context.");
   }
 
-  console.log("You can now start the agent with: npm run dev\n");
+  const ctxId = getContextId();
+  if (ctxId) {
+    console.log(`\nSave this context ID in your .env for future sessions:`);
+    console.log(`BROWSERBASE_CONTEXT_ID=${ctxId}`);
+  }
+
+  console.log("\nYou can now start the agent with: npm run dev\n");
   await closeBrowser();
   process.exit(0);
 }

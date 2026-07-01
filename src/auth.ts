@@ -7,21 +7,10 @@ const LOGIN_TIMEOUT = 5 * 60_000; // 5 minutes to wait for OTP
 
 export async function login(page: Page): Promise<boolean> {
   console.log("[auth] Navigating to login page...");
-  await page.goto(config.rentcafe.url, { waitUntil: "networkidle", timeout: 30_000 });
+  await page.goto(config.rentcafe.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
 
-  // Check if Cloudflare challenge is present
-  const cfChallenge = await page.$("text=Verify you are human");
-  if (cfChallenge) {
-    console.log("[auth] Cloudflare challenge detected — waiting for it to resolve...");
-    await sendSms("Cloudflare challenge detected on RentCafe. If running locally, please solve the captcha in the browser window.");
-    // Wait up to 2 minutes for the challenge to clear
-    try {
-      await page.waitForURL((url) => !url.toString().includes("challenge"), { timeout: 120_000 });
-    } catch {
-      console.error("[auth] Cloudflare challenge did not resolve in time");
-      return false;
-    }
-  }
+  // Wait for Cloudflare to resolve (Browserbase handles this automatically)
+  await page.waitForTimeout(10_000);
 
   // Check if we're already logged in (cookies were valid)
   if (await isLoggedIn(page)) {
@@ -29,40 +18,43 @@ export async function login(page: Page): Promise<boolean> {
     return true;
   }
 
-  // Find and fill email field
-  console.log("[auth] Filling email...");
-  const emailInput = await page.$(
-    'input[type="email"], input[name="email"], input[name="Email"], input[id*="email" i], input[id*="Email"]'
+  // Step 1: Click "Continue with Email" button
+  console.log("[auth] Clicking 'Continue with Email'...");
+  const emailBtn = await page.$(
+    'button:has-text("Continue with Email"), a:has-text("Continue with Email")'
   );
-  if (!emailInput) {
-    // Try broader selectors
-    const inputs = await page.$$("input[type='text'], input:not([type])");
-    if (inputs.length > 0) {
-      await inputs[0].fill(config.rentcafe.email);
-    } else {
-      console.error("[auth] Could not find email input field");
-      return false;
-    }
-  } else {
-    await emailInput.fill(config.rentcafe.email);
+  if (emailBtn) {
+    await emailBtn.click();
+    await page.waitForTimeout(3000);
   }
 
-  // Click sign-in / submit button
+  // Step 2: Fill email field
+  console.log("[auth] Filling email...");
+  const emailInput = await page.$(
+    'input[type="email"], input[name*="email" i], input[id*="email" i], input[type="text"]'
+  );
+  if (emailInput) {
+    await emailInput.fill(config.rentcafe.email);
+  } else {
+    console.error("[auth] Could not find email input field");
+    return false;
+  }
+
+  // Step 3: Click submit/continue to trigger OTP
   const submitBtn = await page.$(
-    'button[type="submit"], input[type="submit"], button:has-text("Sign In"), button:has-text("Log In"), button:has-text("Continue"), button:has-text("Send Code"), a:has-text("Sign In")'
+    'button[type="submit"], input[type="submit"], button:has-text("Continue"), button:has-text("Sign In"), button:has-text("Send Code"), button:has-text("Log In")'
   );
   if (submitBtn) {
     await submitBtn.click();
-    console.log("[auth] Submitted email, waiting for OTP page...");
+    console.log("[auth] Submitted email, waiting for OTP...");
   } else {
     await page.keyboard.press("Enter");
     console.log("[auth] Pressed Enter to submit email");
   }
 
-  // Wait for the OTP/verification code page
   await page.waitForTimeout(3000);
 
-  // Notify user via SMS that a code is needed
+  // Step 4: Notify user via SMS that a code is needed
   await sendSms("RentCafe login: check your email for a verification code and reply with it here.");
   console.log("[auth] Waiting for OTP code via SMS...");
 
@@ -74,7 +66,7 @@ export async function login(page: Page): Promise<boolean> {
     return false;
   }
 
-  // Find and fill OTP field
+  // Step 5: Fill OTP field
   const otpInput = await page.$(
     'input[name*="code" i], input[name*="otp" i], input[name*="verification" i], input[id*="code" i], input[type="tel"], input[type="number"]'
   );
@@ -91,7 +83,7 @@ export async function login(page: Page): Promise<boolean> {
     }
   }
 
-  // Submit OTP
+  // Step 6: Submit OTP
   const otpSubmit = await page.$(
     'button[type="submit"], input[type="submit"], button:has-text("Verify"), button:has-text("Submit"), button:has-text("Continue"), button:has-text("Sign In")'
   );

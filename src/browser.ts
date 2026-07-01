@@ -5,6 +5,7 @@ import { config } from "./config.js";
 let bb: Browserbase | null = null;
 let browser: Browser | null = null;
 let sessionId: string | null = null;
+let contextId: string | null = null;
 
 function getClient(): Browserbase {
   if (!bb) {
@@ -16,10 +17,22 @@ function getClient(): Browserbase {
   return bb;
 }
 
+async function getOrCreateContext(): Promise<string> {
+  if (config.browserbase.contextId) return config.browserbase.contextId;
+
+  const client = getClient();
+  const ctx = await client.contexts.create({
+    projectId: config.browserbase.projectId,
+  });
+  console.log(`[browser] Created new context: ${ctx.id}`);
+  return ctx.id;
+}
+
 export async function launchBrowser(): Promise<Browser> {
   if (browser?.isConnected()) return browser;
 
   const client = getClient();
+  contextId = await getOrCreateContext();
 
   console.log("[browser] Creating Browserbase session...");
   const session = await client.sessions.create({
@@ -27,7 +40,7 @@ export async function launchBrowser(): Promise<Browser> {
     browserSettings: {
       solveCaptchas: true,
       context: {
-        id: config.browserbase.contextId,
+        id: contextId,
         persist: true,
       },
     },
@@ -54,8 +67,6 @@ export async function getPage(): Promise<Page> {
 }
 
 export async function saveCookies(): Promise<void> {
-  // With Browserbase persistent contexts, cookies are saved automatically
-  // when the session ends with context.persist = true
   console.log("[browser] Cookies persist via Browserbase context");
 }
 
@@ -65,7 +76,6 @@ export async function closeBrowser(): Promise<void> {
     browser = null;
   }
 
-  // Release the Browserbase session
   if (sessionId) {
     try {
       const client = getClient();
@@ -84,6 +94,13 @@ export async function closeBrowser(): Promise<void> {
 export async function isLoggedIn(page: Page): Promise<boolean> {
   const url = page.url();
   if (url.includes("userlogin") || url.includes("login")) return false;
-  const logoutLink = await page.$('a[href*="logout"], a[href*="signout"], .logout, #logout');
+  // Check for dashboard-like elements that appear after login
+  const logoutLink = await page.$(
+    'a[href*="logout"], a[href*="signout"], .logout, #logout, a:has-text("Sign Out"), a:has-text("Log Out")'
+  );
   return logoutLink !== null;
+}
+
+export function getContextId(): string | null {
+  return contextId;
 }
