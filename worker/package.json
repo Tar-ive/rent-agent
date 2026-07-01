@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "build": "echo 'Wrangler handles TypeScript compilation'",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "setup-webhook": "node setup-webhook.js"
