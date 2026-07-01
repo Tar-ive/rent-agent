@@ -31,11 +31,10 @@ export async function automatedLogin(): Promise<boolean> {
     return false;
   }
 
-  const solver = new Solver(config.captcha.apiKey);
-  await launchBrowser();
-  const page = await getPage();
-
   try {
+    const solver = new Solver(config.captcha.apiKey);
+    await launchBrowser();
+    const page = await getPage();
     // Step 1: Navigate + Cloudflare bypass
     console.log("[login] Navigating to RentCafe...");
     await page.goto(config.rentcafe.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
@@ -61,7 +60,7 @@ export async function automatedLogin(): Promise<boolean> {
       return false;
     }
     await emailInput.click();
-    await emailInput.type(config.rentcafe.email, { delay: 100 });
+    await emailInput.fill(config.rentcafe.email);
     await page.waitForTimeout(1000);
 
     // Step 4: First submit — triggers Enterprise reCAPTCHA (expected to fail)
@@ -72,11 +71,17 @@ export async function automatedLogin(): Promise<boolean> {
 
     // Step 5: Solve v2 via 2captcha
     console.log("[login] Solving reCAPTCHA v2 via 2captcha...");
-    const v2Result = await solver.recaptcha({
-      googlekey: config.captcha.standardSiteKey,
-      pageurl: config.rentcafe.url,
-    });
-    const v2Token = v2Result.data;
+    let v2Token: string;
+    try {
+      const v2Result = await solver.recaptcha({
+        googlekey: config.captcha.standardSiteKey,
+        pageurl: config.rentcafe.url,
+      });
+      v2Token = v2Result.data;
+    } catch (solverErr) {
+      console.error("[login] 2captcha solver failed:", solverErr);
+      return false;
+    }
     console.log(`[login] v2 token received (${v2Token.length} chars)`);
 
     // Step 6: Inject v2 token + set failedcaptchaent + submit OTP action
@@ -180,8 +185,8 @@ export async function automatedLogin(): Promise<boolean> {
 }
 
 async function selectEmailVerification(page: Page): Promise<boolean> {
-  // Try clicking the email radio directly
-  const emailRadio = await page.$('input[type="radio"][value*="email"], input[type="radio"]:nth-of-type(2)');
+  // Try value-based selector first
+  const emailRadio = await page.$('input[type="radio"][value*="email" i]');
   if (emailRadio) {
     await emailRadio.click();
     await page.waitForTimeout(500);
@@ -196,23 +201,36 @@ async function selectEmailVerification(page: Page): Promise<boolean> {
     return true;
   }
 
-  // Fall back to second radio button
+  // Try radio whose adjacent label mentions email
   const radios = await page.$$('input[type="radio"]');
-  if (radios.length >= 2) {
-    await radios[1].click();
-    await page.waitForTimeout(500);
-    return true;
+  for (const radio of radios) {
+    const id = await radio.getAttribute("id");
+    if (id) {
+      const label = await page.$(`label[for="${id}"]`);
+      const text = await label?.textContent() ?? "";
+      if (text.toLowerCase().includes("email") || text.includes("@")) {
+        await radio.click();
+        await page.waitForTimeout(500);
+        return true;
+      }
+    }
   }
 
   return false;
 }
 
 async function enterOtp(page: Page, otp: string): Promise<boolean> {
+  // Validate OTP is exactly 6 digits
+  if (!/^\d{6}$/.test(otp)) {
+    console.error(`[login] Invalid OTP format: expected 6 digits, got "${otp}"`);
+    return false;
+  }
+
   // RentCafe uses 6 individual single-digit input boxes
   const otpInputs = await page.$$('input[maxlength="1"], input.otp-input, input[type="tel"], input[type="number"]');
 
   if (otpInputs.length >= 6) {
-    for (let i = 0; i < 6 && i < otp.length; i++) {
+    for (let i = 0; i < 6; i++) {
       await otpInputs[i].click();
       await otpInputs[i].fill(otp[i]);
       await page.waitForTimeout(100);
@@ -236,7 +254,7 @@ async function enterOtp(page: Page, otp: string): Promise<boolean> {
 // CLI entry point
 if (process.argv[1]?.includes("login")) {
   automatedLogin()
-    .then((success) => {
+    .then(async (success) => {
       if (success) {
         const ctxId = getContextId();
         if (ctxId) {
@@ -247,9 +265,9 @@ if (process.argv[1]?.includes("login")) {
       } else {
         console.error("Login failed.");
       }
-      return closeBrowser();
+      await closeBrowser();
+      process.exit(success ? 0 : 1);
     })
-    .then(() => process.exit(0))
     .catch((err) => {
       console.error("Fatal:", err);
       process.exit(1);

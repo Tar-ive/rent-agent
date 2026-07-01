@@ -30,7 +30,7 @@ export const config = {
   },
   captcha: {
     apiKey: process.env.CAPTCHA_API_KEY ?? "",
-    standardSiteKey: "6Led3AcTAAAAAMU9N0MWjGzH1EM2ewS_DHHVol3p",
+    standardSiteKey: process.env.CAPTCHA_SITE_KEY ?? "6Led3AcTAAAAAMU9N0MWjGzH1EM2ewS_DHHVol3p",
   },
   twilio: {
     accountSid: process.env.TWILIO_ACCOUNT_SID ?? "",

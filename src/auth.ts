@@ -48,7 +48,7 @@ async function automatedCaptchaLogin(page: Page): Promise<boolean> {
     return false;
   }
   await emailInput.click();
-  await emailInput.type(config.rentcafe.email, { delay: 100 });
+  await emailInput.fill(config.rentcafe.email);
   await page.waitForTimeout(1000);
 
   // First submit — triggers Enterprise reCAPTCHA (expected to fail → v2 fallback)
@@ -59,11 +59,17 @@ async function automatedCaptchaLogin(page: Page): Promise<boolean> {
 
   // Solve v2 via 2captcha
   console.log("[auth] Solving reCAPTCHA v2 via 2captcha...");
-  const v2Result = await solver.recaptcha({
-    googlekey: config.captcha.standardSiteKey,
-    pageurl: config.rentcafe.url,
-  });
-  const v2Token = v2Result.data;
+  let v2Token: string;
+  try {
+    const v2Result = await solver.recaptcha({
+      googlekey: config.captcha.standardSiteKey,
+      pageurl: config.rentcafe.url,
+    });
+    v2Token = v2Result.data;
+  } catch (solverErr) {
+    console.error("[auth] 2captcha solver failed:", solverErr);
+    return false;
+  }
   console.log(`[auth] v2 token received (${v2Token.length} chars)`);
 
   // Inject token + submit
@@ -167,13 +173,15 @@ async function automatedCaptchaLogin(page: Page): Promise<boolean> {
 }
 
 async function selectEmailVerification(page: Page): Promise<boolean> {
-  const emailRadio = await page.$('input[type="radio"][value*="email"], input[type="radio"]:nth-of-type(2)');
+  // Try value-based selector first
+  const emailRadio = await page.$('input[type="radio"][value*="email" i]');
   if (emailRadio) {
     await emailRadio.click();
     await page.waitForTimeout(500);
     return true;
   }
 
+  // Try label containing "gmail" or "email"
   const emailLabel = await page.$('label:has-text("gmail.com"), label:has-text("email")');
   if (emailLabel) {
     await emailLabel.click();
@@ -181,11 +189,19 @@ async function selectEmailVerification(page: Page): Promise<boolean> {
     return true;
   }
 
+  // Try radio whose adjacent label mentions email
   const radios = await page.$$('input[type="radio"]');
-  if (radios.length >= 2) {
-    await radios[1].click();
-    await page.waitForTimeout(500);
-    return true;
+  for (const radio of radios) {
+    const id = await radio.getAttribute("id");
+    if (id) {
+      const label = await page.$(`label[for="${id}"]`);
+      const text = await label?.textContent() ?? "";
+      if (text.toLowerCase().includes("email") || text.includes("@")) {
+        await radio.click();
+        await page.waitForTimeout(500);
+        return true;
+      }
+    }
   }
 
   return false;
