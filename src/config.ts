@@ -28,6 +28,10 @@ export const config = {
     refreshToken: process.env.GMAIL_REFRESH_TOKEN ?? "",
     otpSender: process.env.GMAIL_OTP_SENDER ?? "noreply",
   },
+  captcha: {
+    apiKey: process.env.CAPTCHA_API_KEY ?? "",
+    standardSiteKey: "6Led3AcTAAAAAMU9N0MWjGzH1EM2ewS_DHHVol3p",
+  },
   twilio: {
     accountSid: process.env.TWILIO_ACCOUNT_SID ?? "",
     authToken: process.env.TWILIO_AUTH_TOKEN ?? "",
