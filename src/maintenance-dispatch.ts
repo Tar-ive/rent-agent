@@ -5,6 +5,7 @@
 
 import { submitMaintenanceRequest } from "./maintenance-action.js";
 import { config } from "./config.js";
+import { sendTelegramPhoto } from "./telegram-photo.js";
 import * as https from "https";
 
 const description: string = process.env.REQUEST_DESCRIPTION ?? "";
@@ -43,7 +44,10 @@ async function main() {
   if (result.success) {
     const msg = `✅ Work order submitted${result.requestId ? ` (ID: ${result.requestId})` : ""}!\n\n"${description}"`;
     console.log(`[dispatch] ${msg}`);
-    await sendTelegram(msg);
+    const photoSent = result.screenshot
+      ? await sendTelegramPhoto(msg, result.screenshot)
+      : false;
+    if (!photoSent) await sendTelegram(msg);
   } else {
     const msg = `❌ Work order failed: ${result.error}\n\nRequest: "${description}"`;
     console.error(`[dispatch] ${msg}`);

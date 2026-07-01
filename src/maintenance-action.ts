@@ -13,6 +13,7 @@ export async function submitMaintenanceRequest(description: string): Promise<{
   success: boolean;
   requestId?: string;
   error?: string;
+  screenshot?: Buffer;
 }> {
   console.log(`[maintenance] Starting submission: "${description.substring(0, 50)}..."`);
 
@@ -180,7 +181,11 @@ export async function submitMaintenanceRequest(description: string): Promise<{
       const idMatch = bodyText.match(/\b(5\d{5})\b/);
       const requestId = idMatch?.[1];
       console.log(`[maintenance] SUCCESS${requestId ? ` (ID: ${requestId})` : ""}`);
-      return { success: true, requestId };
+      const screenshot = await page.screenshot().catch((err: unknown) => {
+        console.error("[maintenance] Screenshot failed:", err);
+        return undefined;
+      });
+      return { success: true, requestId, screenshot };
     }
 
     return { success: false, error: "Submission result unclear — form may not have submitted" };

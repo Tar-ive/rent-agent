@@ -14,6 +14,7 @@ import { Solver } from "2captcha-ts";
 import { google } from "googleapis";
 import { config } from "./config.js";
 import { sendNotification } from "./notify.js";
+import { sendTelegramPhoto } from "./telegram-photo.js";
 
 const PEST_CONTROL_DESCRIPTION =
   "Requesting scheduled pest control treatment for the apartment. Please treat all rooms including kitchen, bathrooms, and common areas.";
@@ -22,6 +23,7 @@ export async function submitPestControl(): Promise<{
   success: boolean;
   requestId?: string;
   error?: string;
+  screenshot?: Buffer;
 }> {
   console.log("[pest-control] Starting pest control submission...");
 
@@ -163,7 +165,11 @@ export async function submitPestControl(): Promise<{
       const idMatch = bodyText.match(/\b(5\d{5})\b/);
       const requestId = idMatch?.[1];
       console.log(`[pest-control] Success! Request ID: ${requestId ?? "unknown"}`);
-      return { success: true, requestId: requestId ?? undefined };
+      const screenshot = await page.screenshot().catch((err: unknown) => {
+        console.error("[pest-control] Screenshot failed:", err);
+        return undefined;
+      });
+      return { success: true, requestId: requestId ?? undefined, screenshot };
     }
 
     // Check for validation errors
@@ -375,9 +381,12 @@ if (process.argv[1]?.includes("pest-control")) {
   submitPestControl()
     .then(async (result) => {
       if (result.success) {
-        const msg = `Pest control request submitted${result.requestId ? ` (ID: ${result.requestId})` : ""}`;
+        const msg = `✅ Pest control request submitted${result.requestId ? ` (ID: ${result.requestId})` : ""}`;
         console.log(`[pest-control] ${msg}`);
-        await sendNotification(msg);
+        const photoSent = result.screenshot
+          ? await sendTelegramPhoto(msg, result.screenshot)
+          : false;
+        if (!photoSent) await sendNotification(msg);
       } else {
         console.error(`[pest-control] Failed: ${result.error}`);
         await sendNotification(`Pest control submission failed: ${result.error}`);
