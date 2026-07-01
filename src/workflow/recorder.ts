@@ -191,11 +191,6 @@ export async function recordWorkflow(): Promise<void> {
     browserSettings: { solveCaptchas: true },
   });
 
-  // Get the live debug URL
-  const debugInfo = await client.sessions.debug(session.id);
-  console.log("\n📺 LIVE VIEW — Open this URL in your browser to see and interact:");
-  console.log(`   ${debugInfo.debuggerFullscreenUrl}\n`);
-
   browser = await chromium.connectOverCDP(session.connectUrl);
   const context: BrowserContext = browser.contexts()[0];
   const page: Page = context.pages()[0] ?? await context.newPage();
@@ -224,10 +219,16 @@ export async function recordWorkflow(): Promise<void> {
     if (!loginOk) {
       console.error("Login failed. Make sure Gmail API is configured for auto-OTP.");
       console.error("Check your .env: GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN");
+      process.exitCode = 1;
       return;
     }
     console.log("Login successful!");
   }
+
+  // Show live view URL only after auth completes (don't expose session during login)
+  const debugInfo = await client.sessions.debug(session.id);
+  console.log("\n📺 LIVE VIEW — Open this URL in your browser to see and interact:");
+  console.log(`   ${debugInfo.debuggerFullscreenUrl}\n`);
 
   // --- Now activate recording (login steps excluded) ---
   startUrl = page.url();
