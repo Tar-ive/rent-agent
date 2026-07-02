@@ -180,8 +180,7 @@ export default {
         });
         if (!ok) {
           await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Failed to trigger workflow. Please try again later.");
-        }
-        if (env.USERS && user) {
+        } else if (env.USERS && user) {
           await env.USERS.put(chatId, JSON.stringify({ ...user, lastUsed: new Date().toISOString() }));
         }
         break;
@@ -201,8 +200,7 @@ export default {
         });
         if (!ok) {
           await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Failed to trigger workflow. Please try again later.");
-        }
-        if (env.USERS && user) {
+        } else if (env.USERS && user) {
           await env.USERS.put(chatId, JSON.stringify({ ...user, lastUsed: new Date().toISOString() }));
         }
         break;
@@ -257,7 +255,7 @@ async function handleRegister(env: Env, chatId: string): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`Register failed for ${chatId}: ${msg}`);
-    await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, `❌ Registration failed: ${msg}\nPlease try again.`);
+    await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Registration failed. Please try again or contact the bot admin.");
   }
 }
 
