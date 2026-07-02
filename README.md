@@ -4,6 +4,16 @@ Automated maintenance and pest control request agent for RentCafe resident porta
 
 Message a Telegram bot to submit maintenance requests, or have pest control scheduled automatically every week. Gmail API auto-reads OTP codes for fully hands-free login.
 
+![Demo](docs/demo.gif)
+
+## Why
+
+I moved into an apartment. There were a lot of issues. At some point I stopped waiting for people to fix them.
+
+Technically I'm not fixing anything myself — I'm just putting in work orders. But even that was a chore: log into the resident portal, get past the captcha, wait for the email OTP, fill out the same form with the same dropdowns, again and again. Rule of thumb: if I have to do something manually three times, find an automation for it.
+
+And since our building requires pest control to be re-requested every single week (and I kept forgetting), that's on a cron job now. Autopay, but for pest control.
+
 ## How It Works
 
 1. **Browserbase** cloud browser handles Cloudflare challenges and persists cookies across sessions
