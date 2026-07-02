@@ -11,9 +11,9 @@ export interface Env {
   TELEGRAM_BOT_TOKEN: string;
   GITHUB_TOKEN: string;
   GITHUB_REPO: string;
-  BROWSERBASE_API_KEY: string;
-  BROWSERBASE_PROJECT_ID: string;
-  USERS: KVNamespace; // Cloudflare KV for user data
+  BROWSERBASE_API_KEY?: string;
+  BROWSERBASE_PROJECT_ID?: string;
+  USERS?: KVNamespace; // Cloudflare KV for user data (optional until configured)
 }
 
 interface UserData {
@@ -72,10 +72,10 @@ async function createBrowserbaseContext(env: Env): Promise<string> {
   const resp = await fetch("https://www.browserbase.com/v1/contexts", {
     method: "POST",
     headers: {
-      "x-bb-api-key": env.BROWSERBASE_API_KEY,
+      "x-bb-api-key": env.BROWSERBASE_API_KEY!,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ projectId: env.BROWSERBASE_PROJECT_ID }),
+    body: JSON.stringify({ projectId: env.BROWSERBASE_PROJECT_ID! }),
   });
   if (!resp.ok) {
     const err = await resp.text().catch(() => "");
@@ -89,11 +89,11 @@ async function createBrowserbaseSession(env: Env, contextId: string): Promise<{ 
   const resp = await fetch("https://www.browserbase.com/v1/sessions", {
     method: "POST",
     headers: {
-      "x-bb-api-key": env.BROWSERBASE_API_KEY,
+      "x-bb-api-key": env.BROWSERBASE_API_KEY!,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      projectId: env.BROWSERBASE_PROJECT_ID,
+      projectId: env.BROWSERBASE_PROJECT_ID!,
       browserSettings: { solveCaptchas: true },
       browserbaseContext: contextId,
     }),
@@ -172,29 +172,23 @@ export default {
         break;
 
       case "pest_control": {
-        const user = await env.USERS.get<UserData>(chatId, "json");
-        if (!user) {
-          await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "⚠️ You need to register first. Send /register to get started.");
-          break;
-        }
+        const user = env.USERS ? await env.USERS.get<UserData>(chatId, "json") : null;
         await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "🐛 Triggering pest control request...");
         const ok = await triggerGitHubAction(env, "pest_control", {
           user_chat_id: chatId,
-          context_id: user.contextId,
+          context_id: user?.contextId ?? "",
         });
         if (!ok) {
           await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Failed to trigger workflow. Please try again later.");
         }
-        await env.USERS.put(chatId, JSON.stringify({ ...user, lastUsed: new Date().toISOString() }));
+        if (env.USERS && user) {
+          await env.USERS.put(chatId, JSON.stringify({ ...user, lastUsed: new Date().toISOString() }));
+        }
         break;
       }
 
       case "maintenance": {
-        const user = await env.USERS.get<UserData>(chatId, "json");
-        if (!user) {
-          await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "⚠️ You need to register first. Send /register to get started.");
-          break;
-        }
+        const user = env.USERS ? await env.USERS.get<UserData>(chatId, "json") : null;
         await sendTelegramMessage(
           env.TELEGRAM_BOT_TOKEN,
           chatId,
@@ -203,12 +197,14 @@ export default {
         const ok = await triggerGitHubAction(env, "maintenance_request", {
           description: intent.description!,
           user_chat_id: chatId,
-          context_id: user.contextId,
+          context_id: user?.contextId ?? "",
         });
         if (!ok) {
           await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Failed to trigger workflow. Please try again later.");
         }
-        await env.USERS.put(chatId, JSON.stringify({ ...user, lastUsed: new Date().toISOString() }));
+        if (env.USERS && user) {
+          await env.USERS.put(chatId, JSON.stringify({ ...user, lastUsed: new Date().toISOString() }));
+        }
         break;
       }
 
@@ -221,6 +217,11 @@ export default {
 };
 
 async function handleRegister(env: Env, chatId: string): Promise<void> {
+  if (!env.USERS || !env.BROWSERBASE_API_KEY || !env.BROWSERBASE_PROJECT_ID) {
+    await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "⚠️ Multi-user registration is not configured yet. Ask the bot admin to set up KV + Browserbase.");
+    return;
+  }
+
   await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "🔄 Setting up your account... Creating a browser session for you to log in.");
 
   try {
@@ -239,7 +240,7 @@ async function handleRegister(env: Env, chatId: string): Promise<void> {
       contextId,
       registeredAt: new Date().toISOString(),
     };
-    await env.USERS.put(chatId, JSON.stringify(userData));
+    await env.USERS!.put(chatId, JSON.stringify(userData));
 
     await sendTelegramMessage(
       env.TELEGRAM_BOT_TOKEN,
@@ -261,6 +262,10 @@ async function handleRegister(env: Env, chatId: string): Promise<void> {
 }
 
 async function handleStatus(env: Env, chatId: string): Promise<void> {
+  if (!env.USERS) {
+    await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "⚠️ Multi-user features not configured yet.");
+    return;
+  }
   const user = await env.USERS.get<UserData>(chatId, "json");
   if (!user) {
     await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Not registered. Send /register to get started.");

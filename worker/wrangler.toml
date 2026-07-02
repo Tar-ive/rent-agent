@@ -9,12 +9,14 @@ compatibility_flags = ["nodejs_compat"]
 [build]
 command = "npm install"
 
-# KV namespace for multi-user session storage
-# Create via: npx wrangler kv namespace create USERS
-# Then paste the binding ID below:
-[[kv_namespaces]]
-binding = "USERS"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+# KV namespace for multi-user session storage.
+# To enable multi-user support:
+#   1. npx wrangler kv namespace create USERS
+#   2. Uncomment the binding below and paste the returned ID
+#
+# [[kv_namespaces]]
+# binding = "USERS"
+# id = "your-kv-namespace-id-here"
 
 # Secrets (set via Cloudflare dashboard or CLI):
 #   npx wrangler secret put TELEGRAM_BOT_TOKEN
