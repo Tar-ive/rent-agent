@@ -35,7 +35,9 @@ jobs:
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
           GMAIL_OTP_SENDER: ${{ secrets.GMAIL_OTP_SENDER }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ github.event.client_payload.user_chat_id || secrets.TELEGRAM_CHAT_ID }}
+          USER_CHAT_ID: ${{ github.event.client_payload.user_chat_id || secrets.TELEGRAM_CHAT_ID }}
+          CONTEXT_ID: ${{ github.event.client_payload.context_id }}
         run: npx tsx src/pest-control.ts
 
       - name: Run maintenance request
@@ -51,7 +53,9 @@ jobs:
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
           GMAIL_OTP_SENDER: ${{ secrets.GMAIL_OTP_SENDER }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ github.event.client_payload.user_chat_id || secrets.TELEGRAM_CHAT_ID }}
+          USER_CHAT_ID: ${{ github.event.client_payload.user_chat_id || secrets.TELEGRAM_CHAT_ID }}
+          CONTEXT_ID: ${{ github.event.client_payload.context_id }}
           REQUEST_DESCRIPTION: ${{ github.event.client_payload.description }}
         run: npx tsx src/maintenance-dispatch.ts
 
@@ -59,7 +63,7 @@ jobs:
         if: failure()
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ github.event.client_payload.user_chat_id || secrets.TELEGRAM_CHAT_ID }}
         run: |
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \

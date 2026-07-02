@@ -19,7 +19,11 @@ import { sendTelegramPhoto } from "./telegram-photo.js";
 const PEST_CONTROL_DESCRIPTION =
   "Requesting scheduled pest control treatment for the apartment. Please treat all rooms including kitchen, bathrooms, and common areas.";
 
-export async function submitPestControl(): Promise<{
+interface PestControlOptions {
+  contextId?: string; // Browserbase persistent context for cookie reuse
+}
+
+export async function submitPestControl(options: PestControlOptions = {}): Promise<{
   success: boolean;
   requestId?: string;
   error?: string;
@@ -28,17 +32,24 @@ export async function submitPestControl(): Promise<{
   console.log("[pest-control] Starting pest control submission...");
 
   const bb = new Browserbase({ apiKey: config.browserbase.apiKey });
-  const session = await bb.sessions.create({
+
+  const sessionOpts: Record<string, unknown> = {
     projectId: config.browserbase.projectId,
     browserSettings: { solveCaptchas: true },
-  });
-  console.log(`[pest-control] Session: ${session.id}`);
+  };
+  if (options.contextId) {
+    sessionOpts.browserbaseContext = options.contextId;
+    console.log("[pest-control] Using persistent context");
+  }
 
-  const browser = await chromium.connectOverCDP(session.connectUrl);
-  const context = browser.contexts()[0];
-  const page = context.pages()[0];
-
+  let browser: import("playwright").Browser | undefined;
   try {
+    const session = await bb.sessions.create(sessionOpts as Parameters<typeof bb.sessions.create>[0]);
+    console.log(`[pest-control] Session: ${session.id}`);
+
+    browser = await chromium.connectOverCDP(session.connectUrl);
+    const context = browser.contexts()[0];
+    const page = context.pages()[0];
     // === LOGIN ===
     const loggedIn = await loginFlow(page);
     if (!loggedIn) {
@@ -188,7 +199,7 @@ export async function submitPestControl(): Promise<{
     console.error("[pest-control] Error:", msg);
     return { success: false, error: msg };
   } finally {
-    await browser.close();
+    await browser?.close();
   }
 }
 
@@ -378,13 +389,16 @@ async function pollGmailOtp(cutoffEpoch: number): Promise<string | null> {
 
 // CLI entry point
 if (process.argv[1]?.includes("pest-control")) {
-  submitPestControl()
+  const contextId = process.env.CONTEXT_ID || undefined;
+  const userChatId = process.env.USER_CHAT_ID || config.telegram.chatId;
+
+  submitPestControl({ contextId })
     .then(async (result) => {
       if (result.success) {
         const msg = `✅ Pest control request submitted${result.requestId ? ` (ID: ${result.requestId})` : ""}`;
         console.log(`[pest-control] ${msg}`);
         const photoSent = result.screenshot
-          ? await sendTelegramPhoto(msg, result.screenshot)
+          ? await sendTelegramPhoto(msg, result.screenshot, userChatId)
           : false;
         if (!photoSent) await sendNotification(msg);
       } else {

@@ -9,8 +9,18 @@ compatibility_flags = ["nodejs_compat"]
 [build]
 command = "npm install"
 
-# All sensitive values stored as secrets via Cloudflare dashboard or CLI:
+# KV namespace for multi-user session storage.
+# To enable multi-user support:
+#   1. npx wrangler kv namespace create USERS
+#   2. Uncomment the binding below and paste the returned ID
+#
+# [[kv_namespaces]]
+# binding = "USERS"
+# id = "your-kv-namespace-id-here"
+
+# Secrets (set via Cloudflare dashboard or CLI):
 #   npx wrangler secret put TELEGRAM_BOT_TOKEN
-#   npx wrangler secret put TELEGRAM_CHAT_ID
 #   npx wrangler secret put GITHUB_TOKEN
 #   npx wrangler secret put GITHUB_REPO
+#   npx wrangler secret put BROWSERBASE_API_KEY
+#   npx wrangler secret put BROWSERBASE_PROJECT_ID
