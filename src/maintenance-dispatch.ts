@@ -15,8 +15,8 @@ if (!description) {
   process.exit(1);
 }
 
-const userChatId: string = process.env.USER_CHAT_ID ?? config.telegram.chatId;
-const contextId: string = process.env.CONTEXT_ID ?? "";
+const userChatId: string = process.env.USER_CHAT_ID?.trim() || config.telegram.chatId;
+const contextId: string = process.env.CONTEXT_ID?.trim() || "";
 
 function sendTelegram(text: string, chatId?: string): Promise<void> {
   return new Promise((resolve, reject) => {

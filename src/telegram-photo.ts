@@ -10,7 +10,7 @@ import { config } from "./config.js";
  * Returns true on success, false otherwise (never throws).
  */
 export async function sendTelegramPhoto(caption: string, photo: Buffer, chatId?: string): Promise<boolean> {
-  const targetChat = chatId ?? config.telegram.chatId;
+  const targetChat = chatId?.trim() || config.telegram.chatId;
   if (!config.telegram.botToken || !targetChat) {
     console.log("[telegram-photo] Telegram not configured, skipping photo");
     return false;

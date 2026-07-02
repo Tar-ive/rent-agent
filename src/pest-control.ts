@@ -39,17 +39,17 @@ export async function submitPestControl(options: PestControlOptions = {}): Promi
   };
   if (options.contextId) {
     sessionOpts.browserbaseContext = options.contextId;
-    console.log(`[pest-control] Using persistent context: ${options.contextId.substring(0, 8)}...`);
+    console.log("[pest-control] Using persistent context");
   }
 
-  const session = await bb.sessions.create(sessionOpts as Parameters<typeof bb.sessions.create>[0]);
-  console.log(`[pest-control] Session: ${session.id}`);
-
-  const browser = await chromium.connectOverCDP(session.connectUrl);
-  const context = browser.contexts()[0];
-  const page = context.pages()[0];
-
+  let browser: import("playwright").Browser | undefined;
   try {
+    const session = await bb.sessions.create(sessionOpts as Parameters<typeof bb.sessions.create>[0]);
+    console.log(`[pest-control] Session: ${session.id}`);
+
+    browser = await chromium.connectOverCDP(session.connectUrl);
+    const context = browser.contexts()[0];
+    const page = context.pages()[0];
     // === LOGIN ===
     const loggedIn = await loginFlow(page);
     if (!loggedIn) {
@@ -199,7 +199,7 @@ export async function submitPestControl(options: PestControlOptions = {}): Promi
     console.error("[pest-control] Error:", msg);
     return { success: false, error: msg };
   } finally {
-    await browser.close();
+    await browser?.close();
   }
 }
 

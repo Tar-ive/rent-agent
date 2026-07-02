@@ -220,11 +220,18 @@ async function handleRegister(env: Env, chatId: string): Promise<void> {
     return;
   }
 
-  await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "🔄 Setting up your account... Creating a browser session for you to log in.");
+  // Check if already registered — reuse existing context
+  const existing = await env.USERS!.get<UserData>(chatId, "json");
+  const contextId = existing?.contextId ?? await (async () => {
+    await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "🔄 Setting up your account... Creating a browser session for you to log in.");
+    return await createBrowserbaseContext(env);
+  })();
+
+  if (existing) {
+    await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "🔄 Re-registering... Creating a new login session with your existing context.");
+  }
 
   try {
-    // Create a persistent Browserbase context for this user
-    const contextId = await createBrowserbaseContext(env);
 
     // Create a session with that context (live view enabled)
     const { sessionId } = await createBrowserbaseSession(env, contextId);
@@ -232,11 +239,11 @@ async function handleRegister(env: Env, chatId: string): Promise<void> {
     // Build live view URL
     const liveViewUrl = `https://www.browserbase.com/sessions/${sessionId}/live`;
 
-    // Save user data to KV
+    // Save user data to KV (preserve original registeredAt if re-registering)
     const userData: UserData = {
       chatId,
       contextId,
-      registeredAt: new Date().toISOString(),
+      registeredAt: existing?.registeredAt ?? new Date().toISOString(),
     };
     await env.USERS!.put(chatId, JSON.stringify(userData));
 

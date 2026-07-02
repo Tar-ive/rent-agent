@@ -29,17 +29,18 @@ export async function submitMaintenanceRequest(description: string, options: Mai
   };
   if (options.contextId) {
     sessionOpts.browserbaseContext = options.contextId;
-    console.log(`[maintenance] Using persistent context: ${options.contextId.substring(0, 8)}...`);
+    console.log("[maintenance] Using persistent context");
   }
 
-  const session = await bb.sessions.create(sessionOpts as Parameters<typeof bb.sessions.create>[0]);
-  console.log(`[maintenance] Session: ${session.id}`);
-
-  const browser = await chromium.connectOverCDP(session.connectUrl);
-  const context = browser.contexts()[0];
-  const page = context.pages()[0];
-
+  let browser: import("playwright").Browser | undefined;
   try {
+    const session = await bb.sessions.create(sessionOpts as Parameters<typeof bb.sessions.create>[0]);
+    console.log(`[maintenance] Session: ${session.id}`);
+
+    browser = await chromium.connectOverCDP(session.connectUrl);
+    const context = browser.contexts()[0];
+    const page = context.pages()[0];
+
     // === LOGIN ===
     const loggedIn = await loginFlow(page, options);
     if (!loggedIn) {
@@ -205,7 +206,7 @@ export async function submitMaintenanceRequest(description: string, options: Mai
     console.error("[maintenance] Error:", msg);
     return { success: false, error: msg };
   } finally {
-    await browser.close();
+    await browser?.close();
   }
 }
 
@@ -216,7 +217,7 @@ async function loginFlow(page: import("playwright").Page, options: MaintenanceOp
 
   // If using a persistent context with saved cookies, we may already be logged in
   const url = page.url();
-  if (!url.includes("userlogin")) {
+  if (options.contextId && !url.includes("userlogin")) {
     console.log("[maintenance] Already logged in (persistent context cookies)");
     return true;
   }
@@ -227,8 +228,12 @@ async function loginFlow(page: import("playwright").Page, options: MaintenanceOp
     return false;
   }
 
-  // If user has a persistent context but session expired, we need full login
-  // This requires 2captcha + Gmail OTP (only works for the primary user)
+  // If persistent context session expired, fail fast — user must re-register
+  if (options.contextId) {
+    console.error("[maintenance] Persistent context expired; user must re-register");
+    return false;
+  }
+
   if (!config.captcha.apiKey || !config.gmail.clientSecret) {
     console.error("[maintenance] Login required but no captcha/Gmail credentials available");
     return false;
