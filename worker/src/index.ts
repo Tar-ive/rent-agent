@@ -20,6 +20,7 @@ interface UserData {
   chatId: string;
   contextId: string; // Browserbase persistent context ID
   rentcafeEmail?: string;
+  rentcafeUrl?: string; // Per-user portal URL (falls back to repo secret when empty)
   registeredAt: string;
   lastUsed?: string;
 }
@@ -106,14 +107,16 @@ async function createBrowserbaseSession(env: Env, contextId: string): Promise<{ 
   return { sessionId: data.id, connectUrl: data.connectUrl };
 }
 
-function parseIntent(text: string): { type: string; description?: string } {
-  const lower = text.toLowerCase().trim();
+function parseIntent(text: string): { type: string; description?: string; url?: string } {
+  const trimmed = text.trim();
+  const lower = trimmed.toLowerCase();
 
   if (lower === "/start" || lower === "/help" || lower === "help") {
     return { type: "help" };
   }
-  if (lower === "/register" || lower === "register") {
-    return { type: "register" };
+  if (lower === "/register" || lower === "register" || lower.startsWith("/register ")) {
+    const arg = trimmed.split(/\s+/)[1];
+    return { type: "register", url: arg };
   }
   if (lower === "/status" || lower === "status") {
     return { type: "status" };
@@ -150,7 +153,8 @@ export default {
           chatId,
           "🏠 *RentCafe Maintenance Bot*\n\n" +
             "*Getting started:*\n" +
-            "• `/register` — set up your account (one-time)\n\n" +
+            "• `/register` — set up your account (one-time)\n" +
+            "• `/register <portal-url>` — use your building's RentCafe login URL if it differs from the default\n\n" +
             "*Commands:*\n" +
             "• `pest control` — request pest treatment\n" +
             "• Any text — maintenance request with your description\n" +
@@ -164,7 +168,7 @@ export default {
         break;
 
       case "register":
-        await handleRegister(env, chatId);
+        await handleRegister(env, chatId, intent.url);
         break;
 
       case "status":
@@ -177,6 +181,7 @@ export default {
         const ok = await triggerGitHubAction(env, "pest_control", {
           user_chat_id: chatId,
           context_id: user?.contextId ?? "",
+          rentcafe_url: user?.rentcafeUrl ?? "",
         });
         if (!ok) {
           await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Failed to trigger workflow. Please try again later.");
@@ -197,6 +202,7 @@ export default {
           description: intent.description!,
           user_chat_id: chatId,
           context_id: user?.contextId ?? "",
+          rentcafe_url: user?.rentcafeUrl ?? "",
         });
         if (!ok) {
           await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Failed to trigger workflow. Please try again later.");
@@ -214,9 +220,14 @@ export default {
   },
 };
 
-async function handleRegister(env: Env, chatId: string): Promise<void> {
+async function handleRegister(env: Env, chatId: string, portalUrl?: string): Promise<void> {
   if (!env.USERS || !env.BROWSERBASE_API_KEY || !env.BROWSERBASE_PROJECT_ID) {
     await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "⚠️ Multi-user registration is not configured yet. Ask the bot admin to set up KV + Browserbase.");
+    return;
+  }
+
+  if (portalUrl && !/^https:\/\/.+/i.test(portalUrl)) {
+    await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "⚠️ That doesn't look like a valid URL. Usage: /register https://yourbuilding.securecafenet.com/residentservices/...");
     return;
   }
 
@@ -243,10 +254,14 @@ async function handleRegister(env: Env, chatId: string): Promise<void> {
     const userData: UserData = {
       chatId,
       contextId,
+      rentcafeUrl: portalUrl ?? existing?.rentcafeUrl,
       registeredAt: existing?.registeredAt ?? new Date().toISOString(),
     };
     await env.USERS!.put(chatId, JSON.stringify(userData));
 
+    const portalLine = userData.rentcafeUrl
+      ? `2. Navigate to your building's portal and log in:\n${userData.rentcafeUrl}\n`
+      : "2. Navigate to your building's RentCafe portal and log in\n";
     await sendTelegramMessage(
       env.TELEGRAM_BOT_TOKEN,
       chatId,
@@ -254,10 +269,11 @@ async function handleRegister(env: Env, chatId: string): Promise<void> {
         "📋 Steps to complete registration:\n" +
         "1. Open this link (expires in 10 min):\n" +
         liveViewUrl + "\n\n" +
-        "2. Log in to RentCafe with your email\n" +
+        portalLine +
         "3. Complete any 2FA (Duo Mobile, etc.)\n" +
         "4. Once you see the dashboard, you're done!\n\n" +
-        "Your login session will be saved. After this, just message me to create work orders — no login needed."
+        "Your login session will be saved. After this, just message me to create work orders — no login needed." +
+        (userData.rentcafeUrl ? "" : "\n\nTip: if you live in a different building than the bot admin, run /register <your-portal-url> so requests go to the right portal.")
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -281,6 +297,6 @@ async function handleStatus(env: Env, chatId: string): Promise<void> {
   await sendTelegramMessage(
     env.TELEGRAM_BOT_TOKEN,
     chatId,
-    `✅ Registered since: ${since}\nLast used: ${lastUsed}\nContext: ${user.contextId.substring(0, 8)}...`
+    `✅ Registered since: ${since}\nLast used: ${lastUsed}\nContext: ${user.contextId.substring(0, 8)}...\nPortal: ${user.rentcafeUrl ?? "default"}`
   );
 }
