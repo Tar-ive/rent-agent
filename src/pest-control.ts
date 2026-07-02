@@ -19,7 +19,11 @@ import { sendTelegramPhoto } from "./telegram-photo.js";
 const PEST_CONTROL_DESCRIPTION =
   "Requesting scheduled pest control treatment for the apartment. Please treat all rooms including kitchen, bathrooms, and common areas.";
 
-export async function submitPestControl(): Promise<{
+interface PestControlOptions {
+  contextId?: string; // Browserbase persistent context for cookie reuse
+}
+
+export async function submitPestControl(options: PestControlOptions = {}): Promise<{
   success: boolean;
   requestId?: string;
   error?: string;
@@ -28,10 +32,17 @@ export async function submitPestControl(): Promise<{
   console.log("[pest-control] Starting pest control submission...");
 
   const bb = new Browserbase({ apiKey: config.browserbase.apiKey });
-  const session = await bb.sessions.create({
+
+  const sessionOpts: Record<string, unknown> = {
     projectId: config.browserbase.projectId,
     browserSettings: { solveCaptchas: true },
-  });
+  };
+  if (options.contextId) {
+    sessionOpts.browserbaseContext = options.contextId;
+    console.log(`[pest-control] Using persistent context: ${options.contextId.substring(0, 8)}...`);
+  }
+
+  const session = await bb.sessions.create(sessionOpts as Parameters<typeof bb.sessions.create>[0]);
   console.log(`[pest-control] Session: ${session.id}`);
 
   const browser = await chromium.connectOverCDP(session.connectUrl);
@@ -378,13 +389,16 @@ async function pollGmailOtp(cutoffEpoch: number): Promise<string | null> {
 
 // CLI entry point
 if (process.argv[1]?.includes("pest-control")) {
-  submitPestControl()
+  const contextId = process.env.CONTEXT_ID || undefined;
+  const userChatId = process.env.USER_CHAT_ID || config.telegram.chatId;
+
+  submitPestControl({ contextId })
     .then(async (result) => {
       if (result.success) {
         const msg = `✅ Pest control request submitted${result.requestId ? ` (ID: ${result.requestId})` : ""}`;
         console.log(`[pest-control] ${msg}`);
         const photoSent = result.screenshot
-          ? await sendTelegramPhoto(msg, result.screenshot)
+          ? await sendTelegramPhoto(msg, result.screenshot, userChatId)
           : false;
         if (!photoSent) await sendNotification(msg);
       } else {

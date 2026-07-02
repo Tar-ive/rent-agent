@@ -1,15 +1,27 @@
 /**
- * Cloudflare Worker — Telegram webhook handler.
+ * Cloudflare Worker — Telegram webhook handler (multi-user).
  *
- * Receives messages from Telegram instantly, responds to simple commands,
- * and triggers GitHub Actions for automation tasks (pest control, maintenance).
+ * Receives messages from Telegram instantly, responds to commands,
+ * and triggers GitHub Actions for automation tasks.
+ *
+ * Supports multiple users via Cloudflare KV for session storage.
  */
 
 export interface Env {
   TELEGRAM_BOT_TOKEN: string;
-  TELEGRAM_CHAT_ID: string;
   GITHUB_TOKEN: string;
-  GITHUB_REPO: string; // e.g. "Tar-ive/rent-agent"
+  GITHUB_REPO: string;
+  BROWSERBASE_API_KEY: string;
+  BROWSERBASE_PROJECT_ID: string;
+  USERS: KVNamespace; // Cloudflare KV for user data
+}
+
+interface UserData {
+  chatId: string;
+  contextId: string; // Browserbase persistent context ID
+  rentcafeEmail?: string;
+  registeredAt: string;
+  lastUsed?: string;
 }
 
 interface TelegramUpdate {
@@ -56,11 +68,52 @@ async function triggerGitHubAction(env: Env, eventType: string, payload: Record<
   return true;
 }
 
+async function createBrowserbaseContext(env: Env): Promise<string> {
+  const resp = await fetch("https://www.browserbase.com/v1/contexts", {
+    method: "POST",
+    headers: {
+      "x-bb-api-key": env.BROWSERBASE_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ projectId: env.BROWSERBASE_PROJECT_ID }),
+  });
+  if (!resp.ok) {
+    const err = await resp.text().catch(() => "");
+    throw new Error(`Failed to create context: ${resp.status} ${err}`);
+  }
+  const data: { id: string } = await resp.json();
+  return data.id;
+}
+
+async function createBrowserbaseSession(env: Env, contextId: string): Promise<{ sessionId: string; connectUrl: string }> {
+  const resp = await fetch("https://www.browserbase.com/v1/sessions", {
+    method: "POST",
+    headers: {
+      "x-bb-api-key": env.BROWSERBASE_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      projectId: env.BROWSERBASE_PROJECT_ID,
+      browserSettings: { solveCaptchas: true },
+      browserbaseContext: contextId,
+    }),
+  });
+  if (!resp.ok) {
+    const err = await resp.text().catch(() => "");
+    throw new Error(`Failed to create session: ${resp.status} ${err}`);
+  }
+  const data: { id: string; connectUrl: string } = await resp.json();
+  return { sessionId: data.id, connectUrl: data.connectUrl };
+}
+
 function parseIntent(text: string): { type: string; description?: string } {
   const lower = text.toLowerCase().trim();
 
   if (lower === "/start" || lower === "/help" || lower === "help") {
     return { type: "help" };
+  }
+  if (lower === "/register" || lower === "register") {
+    return { type: "register" };
   }
   if (lower === "/status" || lower === "status") {
     return { type: "status" };
@@ -87,24 +140,22 @@ export default {
       return new Response("OK", { status: 200 });
     }
 
-    // Only respond to authorized user
-    if (message.chat.id.toString() !== env.TELEGRAM_CHAT_ID) {
-      return new Response("OK", { status: 200 });
-    }
-
+    const chatId = message.chat.id.toString();
     const intent = parseIntent(message.text);
 
     switch (intent.type) {
       case "help":
         await sendTelegramMessage(
           env.TELEGRAM_BOT_TOKEN,
-          env.TELEGRAM_CHAT_ID,
+          chatId,
           "🏠 *RentCafe Maintenance Bot*\n\n" +
-            "Send me a message to create a work order:\n" +
-            "• `pest control` — weekly pest treatment\n" +
+            "*Getting started:*\n" +
+            "• `/register` — set up your account (one-time)\n\n" +
+            "*Commands:*\n" +
+            "• `pest control` — request pest treatment\n" +
             "• Any text — maintenance request with your description\n" +
-            "• `status` — check bot status\n\n" +
-            "Examples:\n" +
+            "• `status` — check your registration\n\n" +
+            "*Examples:*\n" +
             "• _leaky faucet in kitchen_\n" +
             "• _AC not cooling properly_\n" +
             "• _three sockets not working_",
@@ -112,36 +163,114 @@ export default {
         );
         break;
 
+      case "register":
+        await handleRegister(env, chatId);
+        break;
+
       case "status":
-        await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, "✅ Bot is online and ready.");
+        await handleStatus(env, chatId);
         break;
 
-      case "pest_control":
-        await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, "🐛 Triggering pest control request...");
-        const ok1 = await triggerGitHubAction(env, "pest_control", {});
-        if (!ok1) {
-          await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, "❌ Failed to trigger workflow. Check GitHub token permissions.");
+      case "pest_control": {
+        const user = await env.USERS.get<UserData>(chatId, "json");
+        if (!user) {
+          await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "⚠️ You need to register first. Send /register to get started.");
+          break;
         }
+        await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "🐛 Triggering pest control request...");
+        const ok = await triggerGitHubAction(env, "pest_control", {
+          user_chat_id: chatId,
+          context_id: user.contextId,
+        });
+        if (!ok) {
+          await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Failed to trigger workflow. Please try again later.");
+        }
+        await env.USERS.put(chatId, JSON.stringify({ ...user, lastUsed: new Date().toISOString() }));
         break;
+      }
 
-      case "maintenance":
+      case "maintenance": {
+        const user = await env.USERS.get<UserData>(chatId, "json");
+        if (!user) {
+          await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "⚠️ You need to register first. Send /register to get started.");
+          break;
+        }
         await sendTelegramMessage(
           env.TELEGRAM_BOT_TOKEN,
-          env.TELEGRAM_CHAT_ID,
+          chatId,
           `🔧 Processing: "${intent.description}"\nI'll notify you when submitted.`
         );
-        const ok2 = await triggerGitHubAction(env, "maintenance_request", {
+        const ok = await triggerGitHubAction(env, "maintenance_request", {
           description: intent.description!,
+          user_chat_id: chatId,
+          context_id: user.contextId,
         });
-        if (!ok2) {
-          await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, "❌ Failed to trigger workflow. Check GitHub token permissions.");
+        if (!ok) {
+          await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Failed to trigger workflow. Please try again later.");
         }
+        await env.USERS.put(chatId, JSON.stringify({ ...user, lastUsed: new Date().toISOString() }));
         break;
+      }
 
       default:
-        await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, "❓ Didn't understand that. Send `help` for usage.");
+        await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❓ Didn't understand that. Send /help for usage.");
     }
 
     return new Response("OK", { status: 200 });
   },
 };
+
+async function handleRegister(env: Env, chatId: string): Promise<void> {
+  await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "🔄 Setting up your account... Creating a browser session for you to log in.");
+
+  try {
+    // Create a persistent Browserbase context for this user
+    const contextId = await createBrowserbaseContext(env);
+
+    // Create a session with that context (live view enabled)
+    const { sessionId } = await createBrowserbaseSession(env, contextId);
+
+    // Build live view URL
+    const liveViewUrl = `https://www.browserbase.com/sessions/${sessionId}/live`;
+
+    // Save user data to KV
+    const userData: UserData = {
+      chatId,
+      contextId,
+      registeredAt: new Date().toISOString(),
+    };
+    await env.USERS.put(chatId, JSON.stringify(userData));
+
+    await sendTelegramMessage(
+      env.TELEGRAM_BOT_TOKEN,
+      chatId,
+      "✅ Browser session created!\n\n" +
+        "📋 Steps to complete registration:\n" +
+        "1. Open this link (expires in 10 min):\n" +
+        liveViewUrl + "\n\n" +
+        "2. Log in to RentCafe with your email\n" +
+        "3. Complete any 2FA (Duo Mobile, etc.)\n" +
+        "4. Once you see the dashboard, you're done!\n\n" +
+        "Your login session will be saved. After this, just message me to create work orders — no login needed."
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Register failed for ${chatId}: ${msg}`);
+    await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, `❌ Registration failed: ${msg}\nPlease try again.`);
+  }
+}
+
+async function handleStatus(env: Env, chatId: string): Promise<void> {
+  const user = await env.USERS.get<UserData>(chatId, "json");
+  if (!user) {
+    await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "❌ Not registered. Send /register to get started.");
+    return;
+  }
+  const since = new Date(user.registeredAt).toLocaleDateString();
+  const lastUsed = user.lastUsed ? new Date(user.lastUsed).toLocaleDateString() : "never";
+  await sendTelegramMessage(
+    env.TELEGRAM_BOT_TOKEN,
+    chatId,
+    `✅ Registered since: ${since}\nLast used: ${lastUsed}\nContext: ${user.contextId.substring(0, 8)}...`
+  );
+}

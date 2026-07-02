@@ -6,18 +6,19 @@
 import { config } from "./config.js";
 
 /**
- * Send a photo with caption to the configured Telegram chat.
+ * Send a photo with caption to the specified Telegram chat (or default).
  * Returns true on success, false otherwise (never throws).
  */
-export async function sendTelegramPhoto(caption: string, photo: Buffer): Promise<boolean> {
-  if (!config.telegram.botToken || !config.telegram.chatId) {
+export async function sendTelegramPhoto(caption: string, photo: Buffer, chatId?: string): Promise<boolean> {
+  const targetChat = chatId ?? config.telegram.chatId;
+  if (!config.telegram.botToken || !targetChat) {
     console.log("[telegram-photo] Telegram not configured, skipping photo");
     return false;
   }
 
   try {
     const form = new FormData();
-    form.append("chat_id", config.telegram.chatId);
+    form.append("chat_id", targetChat);
     form.append("caption", caption.slice(0, 1024)); // Telegram caption limit
     form.append("photo", new Blob([new Uint8Array(photo)], { type: "image/png" }), "confirmation.png");
 

@@ -1,6 +1,6 @@
 /**
  * Generic maintenance request submission via Browserbase + 2captcha + Gmail OTP.
- * Used by the Telegram bot for on-demand work orders.
+ * Supports per-user persistent contexts for multi-user operation.
  */
 
 import Browserbase from "@browserbasehq/sdk";
@@ -9,7 +9,11 @@ import { Solver } from "2captcha-ts";
 import { google } from "googleapis";
 import { config } from "./config.js";
 
-export async function submitMaintenanceRequest(description: string): Promise<{
+interface MaintenanceOptions {
+  contextId?: string; // Browserbase persistent context for cookie reuse
+}
+
+export async function submitMaintenanceRequest(description: string, options: MaintenanceOptions = {}): Promise<{
   success: boolean;
   requestId?: string;
   error?: string;
@@ -18,10 +22,17 @@ export async function submitMaintenanceRequest(description: string): Promise<{
   console.log(`[maintenance] Starting submission: "${description.substring(0, 50)}..."`);
 
   const bb = new Browserbase({ apiKey: config.browserbase.apiKey });
-  const session = await bb.sessions.create({
+
+  const sessionOpts: Record<string, unknown> = {
     projectId: config.browserbase.projectId,
     browserSettings: { solveCaptchas: true },
-  });
+  };
+  if (options.contextId) {
+    sessionOpts.browserbaseContext = options.contextId;
+    console.log(`[maintenance] Using persistent context: ${options.contextId.substring(0, 8)}...`);
+  }
+
+  const session = await bb.sessions.create(sessionOpts as Parameters<typeof bb.sessions.create>[0]);
   console.log(`[maintenance] Session: ${session.id}`);
 
   const browser = await chromium.connectOverCDP(session.connectUrl);
@@ -30,7 +41,7 @@ export async function submitMaintenanceRequest(description: string): Promise<{
 
   try {
     // === LOGIN ===
-    const loggedIn = await loginFlow(page);
+    const loggedIn = await loginFlow(page, options);
     if (!loggedIn) {
       return { success: false, error: "Login failed" };
     }
@@ -198,18 +209,32 @@ export async function submitMaintenanceRequest(description: string): Promise<{
   }
 }
 
-async function loginFlow(page: any): Promise<boolean> {
-  const solver = new Solver(config.captcha.apiKey);
-
+async function loginFlow(page: import("playwright").Page, options: MaintenanceOptions): Promise<boolean> {
   // Navigate
   await page.goto(config.rentcafe.url, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForTimeout(20000);
+
+  // If using a persistent context with saved cookies, we may already be logged in
+  const url = page.url();
+  if (!url.includes("userlogin")) {
+    console.log("[maintenance] Already logged in (persistent context cookies)");
+    return true;
+  }
 
   const title = await page.title();
   if (!title.includes("Account Access") && !title.includes("Resident")) {
     console.error("[maintenance] Page didn't load correctly:", title);
     return false;
   }
+
+  // If user has a persistent context but session expired, we need full login
+  // This requires 2captcha + Gmail OTP (only works for the primary user)
+  if (!config.captcha.apiKey || !config.gmail.clientSecret) {
+    console.error("[maintenance] Login required but no captcha/Gmail credentials available");
+    return false;
+  }
+
+  const solver = new Solver(config.captcha.apiKey);
 
   // Continue with Email
   const emailBtn = await page.$('button:has-text("Continue with Email")');
@@ -250,7 +275,7 @@ async function loginFlow(page: any): Promise<boolean> {
   `);
 
   const respPromise = page.waitForResponse(
-    (resp: any) => resp.url().includes("handler=LoginUsername"),
+    (resp: import("playwright").Response) => resp.url().includes("handler=LoginUsername"),
     { timeout: 30000 }
   ).catch(() => null);
 

@@ -1,6 +1,7 @@
 /**
- * CLI entry point for GitHub Actions dispatch.
- * Reads REQUEST_DESCRIPTION from env, submits work order, notifies via Telegram.
+ * CLI entry point for GitHub Actions dispatch (multi-user).
+ * Reads REQUEST_DESCRIPTION, USER_CHAT_ID, CONTEXT_ID from env.
+ * Submits work order using the user's persistent context, notifies via Telegram.
  */
 
 import { submitMaintenanceRequest } from "./maintenance-action.js";
@@ -14,10 +15,13 @@ if (!description) {
   process.exit(1);
 }
 
-function sendTelegram(text: string): Promise<void> {
+const userChatId: string = process.env.USER_CHAT_ID ?? config.telegram.chatId;
+const contextId: string = process.env.CONTEXT_ID ?? "";
+
+function sendTelegram(text: string, chatId?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify({
-      chat_id: config.telegram.chatId,
+      chat_id: chatId ?? userChatId,
       text,
     });
     const options = {
@@ -38,14 +42,18 @@ function sendTelegram(text: string): Promise<void> {
 
 async function main() {
   console.log(`[dispatch] Submitting maintenance request: "${description}"`);
+  if (contextId) {
+    console.log(`[dispatch] Using context: ${contextId.substring(0, 8)}...`);
+  }
+  console.log(`[dispatch] Notifying chat: ${userChatId}`);
 
-  const result = await submitMaintenanceRequest(description);
+  const result = await submitMaintenanceRequest(description, { contextId: contextId || undefined });
 
   if (result.success) {
     const msg = `✅ Work order submitted${result.requestId ? ` (ID: ${result.requestId})` : ""}!\n\n"${description}"`;
     console.log(`[dispatch] ${msg}`);
     const photoSent = result.screenshot
-      ? await sendTelegramPhoto(msg, result.screenshot)
+      ? await sendTelegramPhoto(msg, result.screenshot, userChatId)
       : false;
     if (!photoSent) await sendTelegram(msg);
   } else {
